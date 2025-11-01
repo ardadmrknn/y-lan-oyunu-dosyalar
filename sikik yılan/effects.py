@@ -28,8 +28,8 @@ class Parcacik:
         self.hiz_y += 0.1 * dt_multiplier
         return self.omur > 0
     
-    def ciz(self, ekran):
-        """Parçacığı çiz"""
+    def ciz(self, ekran, offset_x=0, offset_y=0):
+        """Parçacığı çiz - OFFSET İLE"""
         # Ömre göre alpha hesapla
         alpha = int(255 * (self.omur / self.max_omur))
         renk_alpha = (*self.renk[:3], alpha)
@@ -40,7 +40,7 @@ class Parcacik:
         # Geçici surface (alpha için)
         temp_surface = pygame.Surface((boyut * 2, boyut * 2), pygame.SRCALPHA)
         pygame.draw.circle(temp_surface, renk_alpha, (boyut, boyut), boyut)
-        ekran.blit(temp_surface, (int(self.x - boyut), int(self.y - boyut)))
+        ekran.blit(temp_surface, (int(self.x - boyut + offset_x), int(self.y - boyut + offset_y)))
 
 
 class BaseEffect:
@@ -95,10 +95,10 @@ class YilanIziEfekti(BaseEffect):
         dt_multiplier = self._dt_multiplier_hesapla(current_fps)
         self.parcaciklar = [p for p in self.parcaciklar if p.guncelle(dt_multiplier)]
     
-    def ciz(self, ekran):
-        """Tüm parçacıkları çiz"""
+    def ciz(self, ekran, offset_x=0, offset_y=0):
+        """Tüm parçacıkları çiz - OFFSET İLE"""
         for parcacik in self.parcaciklar:
-            parcacik.ciz(ekran)
+            parcacik.ciz(ekran, offset_x, offset_y)
     
     def temizle(self):
         """Tüm parçacıkları temizle"""
@@ -181,11 +181,11 @@ class YemYemeEfekti(BaseEffect):
             if efekt['sure'] <= 0 or len(efekt['parcaciklar']) == 0:
                 self.aktif_efektler.remove(efekt)
     
-    def ciz(self, ekran):
-        """Tüm efektleri çiz"""
+    def ciz(self, ekran, offset_x=0, offset_y=0):
+        """Tüm efektleri çiz - OFFSET İLE"""
         for efekt in self.aktif_efektler:
             for parcacik in efekt['parcaciklar']:
-                parcacik.ciz(ekran)
+                parcacik.ciz(ekran, offset_x, offset_y)
     
     def temizle(self):
         """Tüm efektleri temizle"""
@@ -218,8 +218,8 @@ class PuanEfekti(BaseEffect):
             if metin['omur'] <= 0:
                 self.aktif_metinler.remove(metin)
     
-    def ciz(self, ekran):
-        """Metinleri çiz"""
+    def ciz(self, ekran, offset_x=0, offset_y=0):
+        """Metinleri çiz - OFFSET İLE"""
         font = pygame.font.Font(None, 36)
         
         for metin in self.aktif_metinler:
@@ -236,8 +236,8 @@ class PuanEfekti(BaseEffect):
             text_surface = font.render(text, True, renk)
             text_surface.set_alpha(alpha)
             
-            # Merkeze yerleştir
-            rect = text_surface.get_rect(center=(int(metin['x']), int(metin['y'])))
+            # Merkeze yerleştir - OFFSET İLE
+            rect = text_surface.get_rect(center=(int(metin['x'] + offset_x), int(metin['y'] + offset_y)))
             ekran.blit(text_surface, rect)
     
     def temizle(self):

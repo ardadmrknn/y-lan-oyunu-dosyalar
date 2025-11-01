@@ -6,17 +6,19 @@ from constants import *
 
 
 class Yilan:
-    def __init__(self, ekran_genislik=GENISLIK, ekran_yukseklik=YUKSEKLIK, renk_index=0, yuz_index=0, aksesuar_index=0):
+    def __init__(self, ekran_genislik=GENISLIK, ekran_yukseklik=YUKSEKLIK, renk_index=0, yuz_index=0, aksesuar_index=0, hucre_boyutu=HUCRE_BOYUTU):
         # Oyun alanı boyutları (wrap-around için)
         self.oyun_genislik = ekran_genislik
         self.oyun_yukseklik = ekran_yukseklik
         # Ekran boyutları (çizim için, eski uyumluluk)
         self.ekran_genislik = ekran_genislik
         self.ekran_yukseklik = ekran_yukseklik
+        # Hücre boyutu - DİNAMİK!
+        self.hucre_boyutu = hucre_boyutu
         self.uzunluk = 1
         # Başlangıç pozisyonu - ekranın ortasında ve hücre boyutuna uygun
-        baslangic_x = (ekran_genislik // 2 // HUCRE_BOYUTU) * HUCRE_BOYUTU
-        baslangic_y = (ekran_yukseklik // 2 // HUCRE_BOYUTU) * HUCRE_BOYUTU
+        baslangic_x = (ekran_genislik // 2 // hucre_boyutu) * hucre_boyutu
+        baslangic_y = (ekran_yukseklik // 2 // hucre_boyutu) * hucre_boyutu
         self.pozisyonlar = [(baslangic_x, baslangic_y)]
         self.yon = (0, -1)  # Yukarı başlıyor
         self.renk = YESIL
@@ -62,8 +64,8 @@ class Yilan:
         yon_x, yon_y = self.yon
         # WRAP-AROUND GERİ GETİRİLDİ - kenarlardan geçiş aktif
         # OYUN ALANI boyutunu kullan, ekran boyutunu değil!
-        yeni_x = (kafa_x + (yon_x * HUCRE_BOYUTU)) % self.oyun_genislik
-        yeni_y = (kafa_y + (yon_y * HUCRE_BOYUTU)) % self.oyun_yukseklik
+        yeni_x = (kafa_x + (yon_x * self.hucre_boyutu)) % self.oyun_genislik
+        yeni_y = (kafa_y + (yon_y * self.hucre_boyutu)) % self.oyun_yukseklik
         
         # Yeni pozisyonu listenin başına ekle
         self.pozisyonlar.insert(0, (yeni_x, yeni_y))
@@ -97,29 +99,30 @@ class Yilan:
                 return True
         return False
 
-    def ciz(self, ekran):
+    def ciz(self, ekran, offset_x=0, offset_y=0):
         # Windows optimizasyonu: Basitleştirilmiş 3D görünümlü yılan - gereksiz glow efektleri kaldırıldı
         for i, pozisyon in enumerate(self.pozisyonlar):
-            merkez_x = pozisyon[0] + HUCRE_BOYUTU // 2
-            merkez_y = pozisyon[1] + HUCRE_BOYUTU // 2
+            merkez_x = pozisyon[0] + self.hucre_boyutu // 2 + offset_x
+            merkez_y = pozisyon[1] + self.hucre_boyutu // 2 + offset_y
             
             if i == 0:  # Kafa - Optimizasyon: Glow katmanları azaltıldı
                 # Gölge
                 golge_renk = tuple(max(0, c - 80) for c in self.renk_koyu)
-                pygame.draw.circle(ekran, golge_renk, (merkez_x + 2, merkez_y + 2), HUCRE_BOYUTU // 2 + 2)
+                pygame.draw.circle(ekran, golge_renk, (merkez_x + 2, merkez_y + 2), self.hucre_boyutu // 2 + 2)
                 
                 # Dış halka (3D kenar)
-                pygame.draw.circle(ekran, self.renk_koyu, (merkez_x, merkez_y), HUCRE_BOYUTU // 2 + 2)
+                pygame.draw.circle(ekran, self.renk_koyu, (merkez_x, merkez_y), self.hucre_boyutu // 2 + 2)
                 
                 # Orta katman
-                pygame.draw.circle(ekran, self.renk_orta, (merkez_x, merkez_y), HUCRE_BOYUTU // 2)
+                pygame.draw.circle(ekran, self.renk_orta, (merkez_x, merkez_y), self.hucre_boyutu // 2)
                 
                 # İç parlak kısım
-                pygame.draw.circle(ekran, self.renk_acik, (merkez_x, merkez_y), HUCRE_BOYUTU // 2 - 2)
+                pygame.draw.circle(ekran, self.renk_acik, (merkez_x, merkez_y), self.hucre_boyutu // 2 - 2)
                 
                 # Basitleştirilmiş parlama (sadece 1 katman)
                 parlama_renk = (255, 255, 255)
-                pygame.draw.circle(ekran, parlama_renk, (merkez_x - 3, merkez_y - 3), 3)
+                parlama_boyut = max(2, self.hucre_boyutu // 12)
+                pygame.draw.circle(ekran, parlama_renk, (merkez_x - self.hucre_boyutu // 10, merkez_y - self.hucre_boyutu // 10), parlama_boyut)
                 
                 # Yüz tipine göre göz çiz
                 self._goz_ciz(ekran, merkez_x, merkez_y)
@@ -133,15 +136,15 @@ class Yilan:
                 
                 # Gölge
                 golge_renk = tuple(max(0, c - 80 - koyuluk // 4) for c in self.renk_koyu)
-                pygame.draw.circle(ekran, golge_renk, (merkez_x + 1, merkez_y + 1), HUCRE_BOYUTU // 2 + 1)
+                pygame.draw.circle(ekran, golge_renk, (merkez_x + 1, merkez_y + 1), self.hucre_boyutu // 2 + 1)
                 
                 # Dış halka
                 koyu_renk = tuple(max(0, c - koyuluk // 2) for c in self.renk_koyu)
-                pygame.draw.circle(ekran, koyu_renk, (merkez_x, merkez_y), HUCRE_BOYUTU // 2 + 1)
+                pygame.draw.circle(ekran, koyu_renk, (merkez_x, merkez_y), self.hucre_boyutu // 2 + 1)
                 
                 # İç katman
                 acik_renk = tuple(max(0, c - koyuluk // 3) for c in self.renk_acik)
-                pygame.draw.circle(ekran, acik_renk, (merkez_x, merkez_y), HUCRE_BOYUTU // 2 - 1)
+                pygame.draw.circle(ekran, acik_renk, (merkez_x, merkez_y), self.hucre_boyutu // 2 - 1)
                 
     def _yon_bazli_offset_hesapla(self, merkez_x, merkez_y, ileri=0, yana1=0, yana2=0):
         """Yön bazlı offset hesaplama - KOD TEKRARINDAN KAÇINMA + CACHE
@@ -188,23 +191,31 @@ class Yilan:
         return result
     
     def _goz_ciz(self, ekran, merkez_x, merkez_y):
-        """Yüz tipine göre gözleri çizer - İYİLEŞTİRİLMİŞ + YÖN BAZLI"""
-        # Gözleri hesapla (yöne göre) - gözler yılanın önünde (ileri=-5) ve yanlarda (yana=7)
-        goz1_x, goz1_y, goz2_x, goz2_y = self._yon_bazli_offset_hesapla(merkez_x, merkez_y, ileri=-5, yana1=7, yana2=7)
+        """Yüz tipine göre gözleri çizer - İYİLEŞTİRİLMİŞ + YÖN BAZLI + DİNAMİK BOYUT"""
+        # Dinamik göz boyutları - hücre boyutuna göre
+        goz_dis_yaricap = max(4, self.hucre_boyutu // 5)
+        goz_ic_yaricap = max(3, self.hucre_boyutu // 7)
+        goz_parlama_yaricap = max(2, self.hucre_boyutu // 15)
+        goz_offset_ileri = -max(3, self.hucre_boyutu // 8)
+        goz_offset_yan = max(4, self.hucre_boyutu // 5)
+        
+        # Gözleri hesapla (yöne göre) - gözler yılanın önünde ve yanlarda
+        goz1_x, goz1_y, goz2_x, goz2_y = self._yon_bazli_offset_hesapla(merkez_x, merkez_y, ileri=goz_offset_ileri, yana1=goz_offset_yan, yana2=goz_offset_yan)
         
         yuz_tipi = YILAN_YUZLERI[self.yuz_index][1] if self.yuz_index < len(YILAN_YUZLERI) else "normal"
         
         if yuz_tipi == "normal":
             # Normal gözler - DAHA BELIRGIN
             # Dış beyaz halka
-            pygame.draw.circle(ekran, BEYAZ, (int(goz1_x), int(goz1_y)), 8)
-            pygame.draw.circle(ekran, BEYAZ, (int(goz2_x), int(goz2_y)), 8)
+            pygame.draw.circle(ekran, BEYAZ, (int(goz1_x), int(goz1_y)), goz_dis_yaricap)
+            pygame.draw.circle(ekran, BEYAZ, (int(goz2_x), int(goz2_y)), goz_dis_yaricap)
             # Göz bebeği
-            pygame.draw.circle(ekran, SIYAH, (int(goz1_x), int(goz1_y)), 5)
-            pygame.draw.circle(ekran, SIYAH, (int(goz2_x), int(goz2_y)), 5)
-            # Parlama efekti (daha büyük ve belirgin)
-            pygame.draw.circle(ekran, BEYAZ, (int(goz1_x + 2), int(goz1_y - 2)), 3)
-            pygame.draw.circle(ekran, BEYAZ, (int(goz2_x + 2), int(goz2_y - 2)), 3)
+            pygame.draw.circle(ekran, SIYAH, (int(goz1_x), int(goz1_y)), goz_ic_yaricap)
+            pygame.draw.circle(ekran, SIYAH, (int(goz2_x), int(goz2_y)), goz_ic_yaricap)
+            # Parlama efekti
+            parlama_offset = max(1, goz_dis_yaricap // 4)
+            pygame.draw.circle(ekran, BEYAZ, (int(goz1_x + parlama_offset), int(goz1_y - parlama_offset)), goz_parlama_yaricap)
+            pygame.draw.circle(ekran, BEYAZ, (int(goz2_x + parlama_offset), int(goz2_y - parlama_offset)), goz_parlama_yaricap)
             
         elif yuz_tipi == "mutlu":
             # Mutlu gözler - GÜLEN GÖZ ŞEKLİ

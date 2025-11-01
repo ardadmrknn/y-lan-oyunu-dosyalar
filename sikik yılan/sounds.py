@@ -4,12 +4,22 @@ import numpy as np
 from constants import SES_ACIK, MUZIK_ACIK, SES_SEVIYESI, MUZIK_SEVIYESI
 
 class SesYoneticisi:
-    def __init__(self):
+    def __init__(self, ayar_yoneticisi=None):
         pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
-        self.ses_acik = SES_ACIK
-        self.muzik_acik = MUZIK_ACIK
-        self.ses_seviyesi = SES_SEVIYESI
-        self.muzik_seviyesi = MUZIK_SEVIYESI
+        self.ayar_yoneticisi = ayar_yoneticisi
+        
+        # Ayarlardan yükle veya varsayılanları kullan
+        if ayar_yoneticisi:
+            ayarlar = ayar_yoneticisi.ayarlari_yukle()
+            self.ses_acik = ayarlar.get("ses_acik", SES_ACIK)
+            self.muzik_acik = ayarlar.get("muzik_acik", MUZIK_ACIK)
+            self.ses_seviyesi = ayarlar.get("ses_seviyesi", SES_SEVIYESI)
+            self.muzik_seviyesi = ayarlar.get("muzik_seviyesi", MUZIK_SEVIYESI)
+        else:
+            self.ses_acik = SES_ACIK
+            self.muzik_acik = MUZIK_ACIK
+            self.ses_seviyesi = SES_SEVIYESI
+            self.muzik_seviyesi = MUZIK_SEVIYESI
         
         # Ses efektleri
         self.sesler = {
@@ -371,12 +381,18 @@ class SesYoneticisi:
     def ses_ac_kapat(self):
         """Ses efektlerini aç/kapat"""
         self.ses_acik = not self.ses_acik
+        # Ayarları kaydet
+        if self.ayar_yoneticisi:
+            self.ayar_yoneticisi.ayarlari_kaydet({"ses_acik": self.ses_acik})
     
     def muzik_ac_kapat(self):
         """Müziği aç/kapat"""
         self.muzik_acik = not self.muzik_acik
         if not self.muzik_acik:
             self.muzik_durdur()
+        # Ayarları kaydet
+        if self.ayar_yoneticisi:
+            self.ayar_yoneticisi.ayarlari_kaydet({"muzik_acik": self.muzik_acik})
     
     def ses_seviyesi_ayarla(self, seviye):
         """Ses efekti seviyesini ayarla (0.0-1.0)"""

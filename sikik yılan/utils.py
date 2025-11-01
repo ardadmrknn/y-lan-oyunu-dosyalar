@@ -41,9 +41,11 @@ def gradient_arkaplan_ciz(ekran):
                        (0, y), (GENISLIK, y))
 
 
-def izgara_ciz(ekran, renk=(40, 40, 50), offset_x=0, offset_y=0):
-    """Izgara çizer"""
-    for x in range(0, GENISLIK, HUCRE_BOYUTU):
-        pygame.draw.line(ekran, renk, (x + offset_x, offset_y), (x + offset_x, YUKSEKLIK + offset_y))
-    for y in range(0, YUKSEKLIK, HUCRE_BOYUTU):
-        pygame.draw.line(ekran, renk, (offset_x, y + offset_y), (GENISLIK + offset_x, y + offset_y))
+def izgara_ciz(ekran, renk=(40, 40, 50), offset_x=0, offset_y=0, hucre_boyutu=HUCRE_BOYUTU, genislik=GENISLIK, yukseklik=YUKSEKLIK):
+    """Izgara çizer - DİNAMİK BOYUT"""
+    # Daha kalın ve belirgin çizgiler
+    cizgi_kalinligi = max(1, hucre_boyutu // 20)
+    for x in range(0, genislik, hucre_boyutu):
+        pygame.draw.line(ekran, renk, (x + offset_x, offset_y), (x + offset_x, yukseklik + offset_y), cizgi_kalinligi)
+    for y in range(0, yukseklik, hucre_boyutu):
+        pygame.draw.line(ekran, renk, (offset_x, y + offset_y), (genislik + offset_x, y + offset_y), cizgi_kalinligi)

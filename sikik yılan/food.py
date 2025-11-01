@@ -13,9 +13,10 @@ class Yem:
     _fruit_images = {}
     _images_loaded = False
     
-    def __init__(self, ekran_genislik=constants.GENISLIK, ekran_yukseklik=constants.YUKSEKLIK, sahte_mi=False):
+    def __init__(self, ekran_genislik=constants.GENISLIK, ekran_yukseklik=constants.YUKSEKLIK, sahte_mi=False, hucre_boyutu=constants.HUCRE_BOYUTU):
         self.ekran_genislik = ekran_genislik
         self.ekran_yukseklik = ekran_yukseklik
+        self.hucre_boyutu = hucre_boyutu  # DİNAMİK HÜCRE BOYUTU
         self.pozisyon = (0, 0)
         self.meyve_turu = 0
         self.sahte_mi = sahte_mi  # Sahte yem mi?
@@ -89,8 +90,8 @@ class Yem:
         return False
 
     def ciz(self, ekran, offset_x=0, offset_y=0):
-        x = self.pozisyon[0] + constants.HUCRE_BOYUTU // 2 + offset_x
-        y = self.pozisyon[1] + constants.HUCRE_BOYUTU // 2 + offset_y
+        x = self.pozisyon[0] + self.hucre_boyutu // 2 + offset_x
+        y = self.pozisyon[1] + self.hucre_boyutu // 2 + offset_y
         
         # Bombaya dönüştüyse bomba çiz
         if self.bombaya_donustu:
@@ -101,7 +102,7 @@ class Yem:
         # Meyve PNG'sini göster - hücre boyutuna göre ölçeklendir
         if self.meyve_turu in Yem._fruit_images and Yem._fruit_images[self.meyve_turu]:
             # Meyve boyutunu hücre boyutunun %80'i olarak ayarla (içinde biraz boşluk bırak)
-            meyve_boyutu = int(constants.HUCRE_BOYUTU * 0.8)
+            meyve_boyutu = int(self.hucre_boyutu * 0.8)
             image = pygame.transform.smoothscale(Yem._fruit_images[self.meyve_turu], (meyve_boyutu, meyve_boyutu))
             rect = image.get_rect(center=(x, y))
             ekran.blit(image, rect)
@@ -115,7 +116,7 @@ class Yem:
                 4: (255, 225, 53)   # Muz - sarı
             }
             color = fallback_colors.get(self.meyve_turu, (255, 255, 255))
-            pygame.draw.circle(ekran, color, (x, y), constants.HUCRE_BOYUTU // 3)
+            pygame.draw.circle(ekran, color, (x, y), self.hucre_boyutu // 3)
     
     def _bomba_ciz(self, ekran, merkez_x, merkez_y):
         """Bombaya dönüşmüş sahte yemi çiz"""
@@ -125,7 +126,7 @@ class Yem:
         else:
             scale = 1.0
         
-        yaricap = int((constants.HUCRE_BOYUTU * 0.4) * scale)
+        yaricap = int((self.hucre_boyutu * 0.4) * scale)
         
         # Gölge
         golge_offset = 2

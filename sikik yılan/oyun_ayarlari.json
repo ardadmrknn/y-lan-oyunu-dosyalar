@@ -1,8 +1,8 @@
 {
     "hiz_seviyesi": 0,
     "en_yuksek_skor": 750,
-    "menu_arkaplan": "backgrounds\\1349491.jpeg",
-    "oyun_arkaplan": "backgrounds\\background.png",
+    "menu_arkaplan": "backgrounds/background.png",
+    "oyun_arkaplan": "backgrounds/mo.jpg",
     "yilan_renk": 13,
     "yilan_yuz": 7,
     "bomba_modu": false,
@@ -10,5 +10,10 @@
     "yilan_aksesuar": 5,
     "menu_muzik": "music/01. Ground Theme.mp3",
     "oyun_muzik": "music/05. Invincibility Theme.mp3",
-    "tam_ekran": true
+    "tam_ekran": true,
+    "cozunurluk": "1280x720",
+    "ses_acik": true,
+    "muzik_acik": true,
+    "ses_seviyesi": 0.7,
+    "muzik_seviyesi": 0.5
 }

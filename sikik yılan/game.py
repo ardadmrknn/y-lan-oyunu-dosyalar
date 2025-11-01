@@ -49,68 +49,96 @@ class Oyun:
         ayarlar = self.ayar_yoneticisi.ayarlari_yukle()
         
         # Ekran ayarlarını yükle
-        self.tam_ekran = ayarlar.get("tam_ekran", True)
-        self.cozunurluk_ayari = ayarlar.get("cozunurluk", "1920x1080")
+        self.cozunurluk_ayari = ayarlar.get("cozunurluk", "Tam Ekran")
         
         # Ekran bilgisini al
         ekran_bilgisi = pygame.display.Info()
         
-        # macOS için tam ekran flag'i
+        # Platform kontrolü
         import platform
-        fullscreen_flag = pygame.FULLSCREEN
-        if platform.system() == 'Darwin':  # macOS
-            # macOS'ta daha iyi tam ekran deneyimi için
-            fullscreen_flag = pygame.FULLSCREEN | pygame.SCALED
+        self.platform = platform.system()  # 'Darwin' (macOS), 'Windows', 'Linux'
         
-        # Ekran oluştur
-        if self.tam_ekran:
-            self.ekran = pygame.display.set_mode((0, 0), fullscreen_flag)
+        # Çözünürlük ayarına göre ekran oluştur
+        if self.cozunurluk_ayari == "Tam Ekran":
+            # Tam ekran modu - Native çözünürlük kullan
+            # Platform bazlı tam ekran modu
+            if self.platform == 'Darwin':  # macOS
+                # macOS için önce ekran boyutunu al, sonra SCALED ile oluştur
+                native_w = ekran_bilgisi.current_w
+                native_h = ekran_bilgisi.current_h
+                if hasattr(pygame, 'SCALED') and native_w and native_h:
+                    fullscreen_flag = pygame.FULLSCREEN | pygame.SCALED
+                    self.ekran = pygame.display.set_mode((native_w, native_h), fullscreen_flag)
+                else:
+                    self.ekran = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            elif self.platform == 'Windows':  # Windows
+                # Windows için standart tam ekran
+                self.ekran = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            else:  # Linux ve diğerleri
+                self.ekran = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+
             self.ekran_genislik = self.ekran.get_width()
             self.ekran_yukseklik = self.ekran.get_height()
-            print(f"Tam ekran: {self.ekran_genislik}x{self.ekran_yukseklik} (Native)")
+            self.tam_ekran = True
+            print(f"Tam ekran ({self.platform}): {self.ekran_genislik}x{self.ekran_yukseklik}")
         else:
-            # Pencere modunda seçilen çözünürlüğü kullan
-            if self.cozunurluk_ayari == "1920x1080":
-                self.ekran_genislik = 1920
-                self.ekran_yukseklik = 1080
-            elif self.cozunurluk_ayari == "1280x720":
-                self.ekran_genislik = 1280
-                self.ekran_yukseklik = 720
-            elif self.cozunurluk_ayari == "1600x900":
-                self.ekran_genislik = 1600
-                self.ekran_yukseklik = 900
-            else:
-                self.ekran_genislik = 1280
-                self.ekran_yukseklik = 720
-            self.ekran = pygame.display.set_mode((self.ekran_genislik, self.ekran_yukseklik), pygame.RESIZABLE)
-            print(f"Pencere modu: {self.ekran_genislik}x{self.ekran_yukseklik}")
+            # Seçilen çözünürlük - tam ekran modunda
+            # Çözünürlük listesinden bul
+            cozunurluk_bulundu = False
+            for isim, genislik, yukseklik in COZUNURLUK_SECENEKLERI:
+                if isim == self.cozunurluk_ayari:
+                    self.ekran_genislik = genislik
+                    self.ekran_yukseklik = yukseklik
+                    cozunurluk_bulundu = True
+                    break
+            
+            if not cozunurluk_bulundu:
+                # Varsayılan - ekran boyutunu al
+                self.ekran_genislik = ekran_bilgisi.current_w
+                self.ekran_yukseklik = ekran_bilgisi.current_h
+            
+            # Platform bazlı borderless fullscreen
+            if self.platform == 'Darwin':  # macOS
+                if hasattr(pygame, 'SCALED'):
+                    fullscreen_flag = pygame.FULLSCREEN | pygame.SCALED
+                else:
+                    fullscreen_flag = pygame.FULLSCREEN
+                self.ekran = pygame.display.set_mode((self.ekran_genislik, self.ekran_yukseklik), fullscreen_flag)
+            elif self.platform == 'Windows':  # Windows
+                self.ekran = pygame.display.set_mode((self.ekran_genislik, self.ekran_yukseklik), pygame.FULLSCREEN)
+            else:  # Linux
+                self.ekran = pygame.display.set_mode((self.ekran_genislik, self.ekran_yukseklik), pygame.FULLSCREEN)
+            
+            self.tam_ekran = True
+            print(f"Çözünürlük modu ({self.platform}): {self.ekran_genislik}x{self.ekran_yukseklik}")
         
-        # Oyun alanı için DİKDÖRTGEN bölge hesapla - ekranı maksimum kullan
-        # Ekranın %95'ini kullan, küçük kenarlık bırak
-        kullanim_orani = 0.95
-        self.oyun_genislik = int(self.ekran_genislik * kullanim_orani)
-        self.oyun_yukseklik = int(self.ekran_yukseklik * kullanim_orani)
+        # Oyun alanı için DİKDÖRTGEN bölge hesapla - ekranın tamamını kullan
+        # Hücre boyutunu DİNAMİK olarak hesapla - ekran boyutuna göre optimize et
+        # KARE HÜCRELER için en küçük boyutu baz al
+        min_boyut = min(self.ekran_genislik, self.ekran_yukseklik)
+        min_grid_sayisi = 25  # Minimum grid hücresi (çok küçük olmasın)
+        max_grid_sayisi = 50  # Maksimum grid hücresi (çok fazla olmasın)
         
-        # Hücre boyutunu hesapla - 30 piksel ideal boyut
-        self.hucre_boyutu = 30
+        # En uygun hücre boyutunu bul - KARE için
+        ideal_hucre_boyutu = min_boyut // min_grid_sayisi
+        ideal_hucre_boyutu = max(20, min(50, ideal_hucre_boyutu))  # 20-50 px arası
         
-        # Oyun alanını hücre boyutuna tam uydur (grid sistemine uyumlu)
-        self.grid_genislik = self.oyun_genislik // self.hucre_boyutu
-        self.grid_yukseklik = self.oyun_yukseklik // self.hucre_boyutu
+        self.hucre_boyutu = ideal_hucre_boyutu
         
-        # Oyun alanı boyutlarını yeniden hesapla (tam grid)
+        # Grid boyutlarını hesapla - KARE HÜCRELER
+        self.grid_genislik = self.ekran_genislik // self.hucre_boyutu
+        self.grid_yukseklik = self.ekran_yukseklik // self.hucre_boyutu
+        
+        # Oyun alanı boyutlarını grid'e göre hesapla - KARE GRID
         self.oyun_genislik = self.grid_genislik * self.hucre_boyutu
         self.oyun_yukseklik = self.grid_yukseklik * self.hucre_boyutu
         
-        # Oyun alanını ekranda ortala
+        # Merkezi hizalama için offset hesapla
         self.oyun_offset_x = (self.ekran_genislik - self.oyun_genislik) // 2
         self.oyun_offset_y = (self.ekran_yukseklik - self.oyun_yukseklik) // 2
         
-        # Global değişkenleri ayarla
-        import constants
-        constants.GENISLIK = self.oyun_genislik
-        constants.YUKSEKLIK = self.oyun_yukseklik
-        constants.HUCRE_BOYUTU = self.hucre_boyutu
+        # Global değişkenleri güncelle (constants modülü zaten import edildi)
+        # NOT: Bu değişkenler artık kullanılmıyor olabilir, ancak eski kod uyumluluğu için bırakıldı
         
         print(f"Oyun alanı: {self.oyun_genislik}x{self.oyun_yukseklik}, Grid: {self.grid_genislik}x{self.grid_yukseklik}, Hücre: {self.hucre_boyutu}px, Offset: ({self.oyun_offset_x}, {self.oyun_offset_y})")
         
@@ -360,8 +388,8 @@ class Oyun:
             self.yem_sayaci += 1
             if self.bomba_modu and not self.pvp_modu and self.yem_sayaci >= SAHTE_YEM_ORANI:
                 # 2 yem spawn: 1 gerçek, 1 sahte
-                self.yem = Yem(self.oyun_genislik, self.oyun_yukseklik, sahte_mi=False)
-                self.sahte_yem = Yem(self.oyun_genislik, self.oyun_yukseklik, sahte_mi=True)
+                self.yem = Yem(self.oyun_genislik, self.oyun_yukseklik, sahte_mi=False, hucre_boyutu=self.hucre_boyutu)
+                self.sahte_yem = Yem(self.oyun_genislik, self.oyun_yukseklik, sahte_mi=True, hucre_boyutu=self.hucre_boyutu)
                 
                 # Bomba ve yılan pozisyonlarından uzak olsun
                 yasak_pozisyonlar = set(self.yilan.pozisyonlar)
@@ -399,12 +427,12 @@ class Oyun:
         if self.pvp_modu:
             # PVP modu - 2 yılan
             # Oyuncu 1 (Mavi) - sol tarafta
-            self.yilan = Yilan(self.oyun_genislik, self.oyun_yukseklik, 3, self.yilan_yuz, self.yilan_aksesuar)  # Mavi renk
+            self.yilan = Yilan(self.oyun_genislik, self.oyun_yukseklik, 3, self.yilan_yuz, self.yilan_aksesuar, self.hucre_boyutu)  # Mavi renk
             self.yilan.pozisyonlar = [(10 * self.hucre_boyutu, (self.grid_yukseklik // 2) * self.hucre_boyutu)]
             self.yilan.yon = (1, 0)  # Sağa bakıyor
             
             # Oyuncu 2 (Kırmızı) - sağ tarafta
-            self.yilan2 = Yilan(self.oyun_genislik, self.oyun_yukseklik, 0, self.yilan_yuz, 0)  # Kırmızı renk, aksesuarsız
+            self.yilan2 = Yilan(self.oyun_genislik, self.oyun_yukseklik, 0, self.yilan_yuz, 0, self.hucre_boyutu)  # Kırmızı renk, aksesuarsız
             self.yilan2.pozisyonlar = [((self.grid_genislik - 10) * self.hucre_boyutu, (self.grid_yukseklik // 2) * self.hucre_boyutu)]
             self.yilan2.yon = (-1, 0)  # Sola bakıyor
             
@@ -413,21 +441,21 @@ class Oyun:
         elif self.bot_modu:
             # Bot vs modu - Oyuncu vs AI
             # Oyuncu (sol tarafta, seçilen renk)
-            self.yilan = Yilan(self.oyun_genislik, self.oyun_yukseklik, self.yilan_renk, self.yilan_yuz, self.yilan_aksesuar)
+            self.yilan = Yilan(self.oyun_genislik, self.oyun_yukseklik, self.yilan_renk, self.yilan_yuz, self.yilan_aksesuar, self.hucre_boyutu)
             self.yilan.pozisyonlar = [(10 * self.hucre_boyutu, (self.grid_yukseklik // 2) * self.hucre_boyutu)]
             self.yilan.yon = (1, 0)  # Sağa bakıyor
             
             # Bot (sağ tarafta, turuncu renk)
-            self.yilan2 = AIYilan(self.oyun_genislik, self.oyun_yukseklik, self.bot_zorluk.lower())
+            self.yilan2 = AIYilan(self.oyun_genislik, self.oyun_yukseklik, self.bot_zorluk.lower(), self.hucre_boyutu)
             
             # Bot için kazanan
             self.pvp_kazanan = None
         else:
             # Normal mod - tek yılan
-            self.yilan = Yilan(self.oyun_genislik, self.oyun_yukseklik, self.yilan_renk, self.yilan_yuz, self.yilan_aksesuar)
+            self.yilan = Yilan(self.oyun_genislik, self.oyun_yukseklik, self.yilan_renk, self.yilan_yuz, self.yilan_aksesuar, self.hucre_boyutu)
             self.yilan2 = None
         
-        self.yem = Yem(self.oyun_genislik, self.oyun_yukseklik, sahte_mi=False)
+        self.yem = Yem(self.oyun_genislik, self.oyun_yukseklik, sahte_mi=False, hucre_boyutu=self.hucre_boyutu)
         
         # Yem pozisyonunu yılanlardan uzak yerleştir
         yasak_poz = set(self.yilan.pozisyonlar)
@@ -646,8 +674,8 @@ class Oyun:
             self.yem_sayaci += 1
             if self.bomba_modu and not self.pvp_modu and self.yem_sayaci >= SAHTE_YEM_ORANI:
                 # 2 yem spawn: 1 gerçek, 1 sahte
-                self.yem = Yem(self.oyun_genislik, self.oyun_yukseklik, sahte_mi=False)
-                self.sahte_yem = Yem(self.oyun_genislik, self.oyun_yukseklik, sahte_mi=True)
+                self.yem = Yem(self.oyun_genislik, self.oyun_yukseklik, sahte_mi=False, hucre_boyutu=self.hucre_boyutu)
+                self.sahte_yem = Yem(self.oyun_genislik, self.oyun_yukseklik, sahte_mi=True, hucre_boyutu=self.hucre_boyutu)
                 
                 # Bomba ve yılan pozisyonlarından uzak olsun
                 yasak_pozisyonlar = set(self.yilan.pozisyonlar)
@@ -762,87 +790,153 @@ class Oyun:
                             self.oyun_durumu = "YILAN_AYAR"
                         elif hasattr(self.menu, 'ses_rect') and self.menu.ses_rect and self.menu.ses_rect.collidepoint(mouse_pos):
                             # Ses efektlerini aç/kapat
-                            self.ses_yoneticisi.ses_acik = not self.ses_yoneticisi.ses_acik
+                            self.ses_yoneticisi.ses_ac_kapat()
                         elif hasattr(self.menu, 'muzik_rect') and self.menu.muzik_rect and self.menu.muzik_rect.collidepoint(mouse_pos):
                             # Müzik aç/kapat
-                            self.ses_yoneticisi.muzik_acik = not self.ses_yoneticisi.muzik_acik
+                            self.ses_yoneticisi.muzik_ac_kapat()
+                            # Müzik açıldıysa menü müziğini çal
+                            if self.ses_yoneticisi.muzik_acik:
+                                self.ses_yoneticisi.muzik_cal(self.menu_muzik)
                         elif hasattr(self.menu, 'muzik_secici_rect') and self.menu.muzik_secici_rect and self.menu.muzik_secici_rect.collidepoint(mouse_pos):
                             self.oyun_durumu = "MUZIK_SECICI"
                     
                     # Grafik ayarları butonları
                     elif self.oyun_durumu == "GRAFIK_AYAR":
-                        if hasattr(self.menu, 'tam_ekran_rect') and self.menu.tam_ekran_rect and self.menu.tam_ekran_rect.collidepoint(mouse_pos):
-                            # Tam ekran/pencere modu değiştir
-                            self.tam_ekran = not self.tam_ekran
-                            self.ayar_yoneticisi.ayarlari_kaydet({"tam_ekran": self.tam_ekran})
-                            
-                            # macOS için tam ekran flag'i
-                            import platform
-                            fullscreen_flag = pygame.FULLSCREEN
-                            if platform.system() == 'Darwin':  # macOS
-                                fullscreen_flag = pygame.FULLSCREEN | pygame.SCALED
-                            
-                            # Ekranı yeniden oluştur
-                            if self.tam_ekran:
-                                # Tam ekran moduna geç - native çözünürlük
-                                self.ekran = pygame.display.set_mode((0, 0), fullscreen_flag)
-                                self.ekran_genislik = self.ekran.get_width()
-                                self.ekran_yukseklik = self.ekran.get_height()
-                                self.oyun_genislik = self.ekran_genislik
-                                self.oyun_yukseklik = self.ekran_yukseklik
-                                # Globalleri güncelle
-                                constants.GENISLIK = self.oyun_genislik
-                                constants.YUKSEKLIK = self.oyun_yukseklik
-                                constants.HUCRE_BOYUTU = max(10, min(20, self.ekran_genislik // 96))
-                            else:
-                                # Pencere moduna geç - seçilen çözünürlük
-                                if self.cozunurluk_ayari == "1920x1080":
-                                    self.oyun_genislik, self.oyun_yukseklik = 1920, 1080
-                                elif self.cozunurluk_ayari == "1600x900":
-                                    self.oyun_genislik, self.oyun_yukseklik = 1600, 900
-                                elif self.cozunurluk_ayari == "1280x720":
-                                    self.oyun_genislik, self.oyun_yukseklik = 1280, 720
-                                else:
-                                    self.oyun_genislik, self.oyun_yukseklik = 1280, 720
-                                
-                                self.ekran = pygame.display.set_mode((self.oyun_genislik, self.oyun_yukseklik), pygame.RESIZABLE)
-                                self.ekran_genislik = self.oyun_genislik
-                                self.ekran_yukseklik = self.oyun_yukseklik
-                                # Globalleri güncelle
-                                constants.GENISLIK = self.oyun_genislik
-                                constants.YUKSEKLIK = self.oyun_yukseklik
-                                constants.HUCRE_BOYUTU = 20
-                            
-                            # Arka planları yeniden yükle - EKRAN BOYUTUNDA
-                            self.menu_arkaplan = arkaplan_yukle(self.menu_arkaplan_yolu, self.ekran_genislik, self.ekran_yukseklik)
-                            self.oyun_arkaplan = arkaplan_yukle(self.oyun_arkaplan_yolu, self.ekran_genislik, self.ekran_yukseklik)
-                        
-                        # Çözünürlük değiştir (sadece pencere modunda)
-                        elif not self.tam_ekran and hasattr(self.menu, 'cozunurluk_rects') and self.menu.cozunurluk_rects:
-                            for coz, rect in self.menu.cozunurluk_rects.items():
+                        # Çözünürlük seçimi
+                        if hasattr(self.menu, 'cozunurluk_rects') and self.menu.cozunurluk_rects:
+                            for isim, rect in self.menu.cozunurluk_rects:
                                 if rect.collidepoint(mouse_pos):
-                                    self.cozunurluk_ayari = coz
-                                    self.ayar_yoneticisi.ayarlari_kaydet({"cozunurluk": coz})
+                                    # Eğer zaten seçili çözünürlükse değiştirme
+                                    if isim == self.cozunurluk_ayari:
+                                        break
                                     
-                                    # Çözünürlüğü uygula
-                                    if coz == "1920x1080":
-                                        self.oyun_genislik, self.oyun_yukseklik = 1920, 1080
-                                    elif coz == "1600x900":
-                                        self.oyun_genislik, self.oyun_yukseklik = 1600, 900
-                                    elif coz == "1280x720":
-                                        self.oyun_genislik, self.oyun_yukseklik = 1280, 720
+                                    self.cozunurluk_ayari = isim
+                                    self.ayar_yoneticisi.ayarlari_kaydet({"cozunurluk": isim})
                                     
-                                    self.ekran = pygame.display.set_mode((self.oyun_genislik, self.oyun_yukseklik), pygame.RESIZABLE)
-                                    self.ekran_genislik = self.oyun_genislik
-                                    self.ekran_yukseklik = self.oyun_yukseklik
-                                    # Globalleri güncelle
-                                    constants.GENISLIK = self.oyun_genislik
-                                    constants.YUKSEKLIK = self.oyun_yukseklik
-                                    constants.HUCRE_BOYUTU = 20
-                                    
-                                    # Arka planları yeniden yükle - EKRAN BOYUTUNDA
-                                    self.menu_arkaplan = arkaplan_yukle(self.menu_arkaplan_yolu, self.ekran_genislik, self.ekran_yukseklik)
-                                    self.oyun_arkaplan = arkaplan_yukle(self.oyun_arkaplan_yolu, self.ekran_genislik, self.ekran_yukseklik)
+                                    try:
+                                        # Çözünürlüğü uygula - CROSS-PLATFORM (TAM EKRAN MODUNDA KAL)
+                                        if isim == "Tam Ekran":
+                                            # Native tam ekran moduna geç - Platform bazlı
+                                            if self.platform == 'Darwin':  # macOS
+                                                # macOS için önce native boyutu al
+                                                info = pygame.display.Info()
+                                                native_w = info.current_w
+                                                native_h = info.current_h
+                                                if hasattr(pygame, 'SCALED') and native_w and native_h:
+                                                    fullscreen_flag = pygame.FULLSCREEN | pygame.SCALED
+                                                    self.ekran = pygame.display.set_mode((native_w, native_h), fullscreen_flag)
+                                                else:
+                                                    self.ekran = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                                            elif self.platform == 'Windows':  # Windows
+                                                self.ekran = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                                            else:  # Linux ve diğerleri
+                                                self.ekran = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                                            
+                                            self.tam_ekran = True
+                                        else:
+                                            # Seçilen çözünürlükte TAM EKRAN modunda kal
+                                            for coz_isim, genislik, yukseklik in COZUNURLUK_SECENEKLERI:
+                                                if coz_isim == isim:
+                                                    # Platform bazlı tam ekran flag'i kullan
+                                                    if self.platform == 'Darwin':  # macOS
+                                                        if hasattr(pygame, 'SCALED'):
+                                                            fullscreen_flag = pygame.FULLSCREEN | pygame.SCALED
+                                                        else:
+                                                            fullscreen_flag = pygame.FULLSCREEN
+                                                        self.ekran = pygame.display.set_mode((genislik, yukseklik), fullscreen_flag)
+                                                    elif self.platform == 'Windows':  # Windows
+                                                        self.ekran = pygame.display.set_mode((genislik, yukseklik), pygame.FULLSCREEN)
+                                                    else:  # Linux
+                                                        self.ekran = pygame.display.set_mode((genislik, yukseklik), pygame.FULLSCREEN)
+                                                    break
+                                            self.tam_ekran = True  # TAM EKRAN MODUNDA KAL!
+                                        
+                                        # Ekran boyutlarını güncelle
+                                        self.ekran_genislik = self.ekran.get_width()
+                                        self.ekran_yukseklik = self.ekran.get_height()
+                                        
+                                        # Hücre boyutunu DİNAMİK olarak yeniden hesapla - KARE İÇİN
+                                        min_boyut = min(self.ekran_genislik, self.ekran_yukseklik)
+                                        min_grid_sayisi = 25
+                                        ideal_hucre_boyutu = min_boyut // min_grid_sayisi
+                                        ideal_hucre_boyutu = max(20, min(50, ideal_hucre_boyutu))
+                                        self.hucre_boyutu = ideal_hucre_boyutu
+                                        
+                                        # Grid yeniden hesapla - KARE HÜCRELER
+                                        self.grid_genislik = self.ekran_genislik // self.hucre_boyutu
+                                        self.grid_yukseklik = self.ekran_yukseklik // self.hucre_boyutu
+                                        
+                                        # Oyun alanını grid'e göre yeniden hesapla
+                                        self.oyun_genislik = self.grid_genislik * self.hucre_boyutu
+                                        self.oyun_yukseklik = self.grid_yukseklik * self.hucre_boyutu
+                                        
+                                        # Merkezi hizalama
+                                        self.oyun_offset_x = (self.ekran_genislik - self.oyun_genislik) // 2
+                                        self.oyun_offset_y = (self.ekran_yukseklik - self.oyun_yukseklik) // 2
+                                        
+                                        # Menu değişkenlerini güncelle
+                                        self.menu.ekran_genislik = self.ekran_genislik
+                                        self.menu.ekran_yukseklik = self.ekran_yukseklik
+                                        self.menu.oyun_offset_x = self.oyun_offset_x
+                                        self.menu.oyun_offset_y = self.oyun_offset_y
+                                        
+                                        # Arka planları yeniden yükle
+                                        self.menu_arkaplan = arkaplan_yukle(self.menu_arkaplan_yolu, self.ekran_genislik, self.ekran_yukseklik)
+                                        self.oyun_arkaplan = arkaplan_yukle(self.oyun_arkaplan_yolu, self.ekran_genislik, self.ekran_yukseklik)
+                                        
+                                        # Eğer oyun devam ediyorsa, yılan ve yem pozisyonlarını yeni grid'e uyarla
+                                        if self.yilan and hasattr(self, 'yem'):
+                                            # Yılanı grid sınırları içinde tut
+                                            yeni_pozisyonlar = []
+                                            for poz in self.yilan.pozisyonlar:
+                                                x = min(poz[0], self.grid_genislik - 1)
+                                                y = min(poz[1], self.grid_yukseklik - 1)
+                                                yeni_pozisyonlar.append([x, y])
+                                            self.yilan.pozisyonlar = yeni_pozisyonlar
+                                            
+                                            # Yemi yeni grid'de rastgele konumlandır
+                                            if self.yem:
+                                                self.yem.pozisyon = [
+                                                    random.randint(0, self.grid_genislik - 1),
+                                                    random.randint(0, self.grid_yukseklik - 1)
+                                                ]
+                                        
+                                        print(f"Çözünürlük değiştirildi ({self.platform}): {isim} -> {self.ekran_genislik}x{self.ekran_yukseklik}, Grid: {self.grid_genislik}x{self.grid_yukseklik}, Hücre: {self.hucre_boyutu}px")
+                                    except Exception as e:
+                                        print(f"Çözünürlük değiştirme hatası ({self.platform}): {e}")
+                                        import traceback
+                                        traceback.print_exc()
+                                        # Hata durumunda native tam ekran moduna geri dön
+                                        if self.platform == 'Darwin':
+                                            info = pygame.display.Info()
+                                            native_w = info.current_w
+                                            native_h = info.current_h
+                                            if hasattr(pygame, 'SCALED') and native_w and native_h:
+                                                fullscreen_flag = pygame.FULLSCREEN | pygame.SCALED
+                                                self.ekran = pygame.display.set_mode((native_w, native_h), fullscreen_flag)
+                                            else:
+                                                self.ekran = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                                        elif self.platform == 'Windows':
+                                            self.ekran = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                                        else:
+                                            self.ekran = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                                        
+                                        self.ekran_genislik = self.ekran.get_width()
+                                        self.ekran_yukseklik = self.ekran.get_height()
+                                        self.tam_ekran = True
+                                        
+                                        # Grid'i yeniden hesapla - KARE İÇİN
+                                        min_boyut = min(self.ekran_genislik, self.ekran_yukseklik)
+                                        min_grid_sayisi = 25
+                                        ideal_hucre_boyutu = min_boyut // min_grid_sayisi
+                                        ideal_hucre_boyutu = max(20, min(50, ideal_hucre_boyutu))
+                                        self.hucre_boyutu = ideal_hucre_boyutu
+                                        self.grid_genislik = self.ekran_genislik // self.hucre_boyutu
+                                        self.grid_yukseklik = self.ekran_yukseklik // self.hucre_boyutu
+                                        self.oyun_genislik = self.grid_genislik * self.hucre_boyutu
+                                        self.oyun_yukseklik = self.grid_yukseklik * self.hucre_boyutu
+                                        self.oyun_offset_x = (self.ekran_genislik - self.oyun_genislik) // 2
+                                        self.oyun_offset_y = (self.ekran_yukseklik - self.oyun_yukseklik) // 2
                                     break
                     
                     # Arka plan ayarları butonları
@@ -1134,23 +1228,8 @@ class Oyun:
                 # İkinci yılanı hareket ettir
                 self.yilan2.hareket_et()
             
-            # Yemi yedi mi kontrol et
-            if self.yilan.kafa_pozisyonu() == self.yem.pozisyon:
-                # Yem yenildi
-                self.yilan.buyut()
-                self.yem = Yem(self.oyun_genislik, self.oyun_yukseklik, sahte_mi=False)
-                # Skor güncelle
-                self.istatistikler.yem_yenildi()
-            
-            # İkinci yılan yemi yedi mi kontrol et (PVP ve Bot modları için)
-            elif (self.pvp_modu or self.bot_modu) and self.yilan2 and self.yilan2.kafa_pozisyonu() == self.yem.pozisyon:
-                # İkinci yılan yem yedi
-                self.yilan2.buyut()
-                self.yem = Yem(self.oyun_genislik, self.oyun_yukseklik, sahte_mi=False)
-                # Skor güncelle (PVP'de ikinci oyuncu için)
-                if self.pvp_modu:
-                    # PVP istatistikleri için yem sayısını güncelle
-                    pass  # İkinci oyuncu için ayrı istatistik yok
+            # Yem kontrolü ve yeme işlemi - düzgün fonksiyon kullan
+            self._yem_kontrol_ve_ye()
             
             # Yılan kendine çarptı mı kontrol et (duvara çarpma kontrolü kaldırıldı)
             if self.yilan.carpma_kontrolu():
@@ -1320,8 +1399,8 @@ class Oyun:
             # Tema seçim arka planı - seçili temayı göster
             tema_renkleri = TEMALAR[self.aktif_tema]
             self.ekran.fill(tema_renkleri["arkaplan"])
-            # İzgara efekti
-            izgara_ciz(self.ekran, tema_renkleri["izgara"])
+            # İzgara efekti - dinamik boyut
+            izgara_ciz(self.ekran, tema_renkleri["izgara"], 0, 0, self.hucre_boyutu, self.ekran_genislik, self.ekran_yukseklik)
             self.menu.tema_menu_ciz(self.aktif_tema)
         
         elif self.oyun_durumu == "MUZIK_SECICI":
@@ -1403,80 +1482,81 @@ class Oyun:
         elif self.oyun_durumu == "PLAYING":
             # Mouse imlecini gizle
             pygame.mouse.set_visible(False)
-            # Önce ekranı tamamen temizle
+            # Tema renklerini al
             tema_renkleri = TEMALAR[self.aktif_tema]
-            self.ekran.fill((10, 10, 15))  # Siyaha yakın koyu arka plan
             
-            # Oyun alanı için surface oluştur
-            oyun_surface = pygame.Surface((self.oyun_genislik, self.oyun_yukseklik))
-            
-            # Oyun arka planını surface'e çiz
-            oyun_surface.fill(tema_renkleri["arkaplan"])
+            # Arka planı ekrana çiz
+            self.ekran.fill((0, 0, 0))  # Siyah kenarlıklar
             if self.oyun_arkaplan:
-                # Arka planı oyun alanına sığdır
+                # Arka planı sadece oyun alanına çiz
                 arkaplan_scaled = pygame.transform.smoothscale(self.oyun_arkaplan, (self.oyun_genislik, self.oyun_yukseklik))
-                oyun_surface.blit(arkaplan_scaled, (0, 0))
+                self.ekran.blit(arkaplan_scaled, (self.oyun_offset_x, self.oyun_offset_y))
+            else:
+                # Oyun alanını tema rengi ile doldur
+                oyun_alani_rect = pygame.Rect(self.oyun_offset_x, self.oyun_offset_y, self.oyun_genislik, self.oyun_yukseklik)
+                pygame.draw.rect(self.ekran, tema_renkleri["arkaplan"], oyun_alani_rect)
             
-            # İzgara (tema renginde) - oyun surface'ine çiz
-            for x in range(0, self.oyun_genislik, self.hucre_boyutu):
-                pygame.draw.line(oyun_surface, tema_renkleri["izgara"], (x, 0), (x, self.oyun_yukseklik))
-            for y in range(0, self.oyun_yukseklik, self.hucre_boyutu):
-                pygame.draw.line(oyun_surface, tema_renkleri["izgara"], (0, y), (self.oyun_genislik, y))
+            # İzgara çizgilerini çiz - SADECE OYUN ALANINDA, OFFSET İLE
+            cizgi_kalinligi = max(1, self.hucre_boyutu // 25)
+            for x in range(0, self.oyun_genislik + 1, self.hucre_boyutu):
+                pygame.draw.line(self.ekran, tema_renkleri["izgara"], 
+                               (x + self.oyun_offset_x, self.oyun_offset_y), 
+                               (x + self.oyun_offset_x, self.oyun_yukseklik + self.oyun_offset_y), 
+                               cizgi_kalinligi)
+            for y in range(0, self.oyun_yukseklik + 1, self.hucre_boyutu):
+                pygame.draw.line(self.ekran, tema_renkleri["izgara"], 
+                               (self.oyun_offset_x, y + self.oyun_offset_y), 
+                               (self.oyun_genislik + self.oyun_offset_x, y + self.oyun_offset_y), 
+                               cizgi_kalinligi)
             
-            # Parçacık efektini çiz (yılanın altında)
-            self.yilan_izi_efekti.ciz(oyun_surface)
+            # Parçacık efektini çiz - OFFSET İLE
+            self.yilan_izi_efekti.ciz(self.ekran, self.oyun_offset_x, self.oyun_offset_y)
             
-            # Bomba modu aktifse bombaları çiz
+            # Bomba modu aktifse bombaları çiz - OFFSET İLE
             if self.bomba_modu:
-                self.bomba_yoneticisi.ciz(oyun_surface)
+                self.bomba_yoneticisi.ciz(self.ekran, self.oyun_offset_x, self.oyun_offset_y)
             
-            # Hayatta Kalma modu için dinamik bombaları çiz
+            # Hayatta Kalma modu için dinamik bombaları çiz - OFFSET İLE
             if self.oyun_modu == "HayattaKalma":
                 for bomba_x, bomba_y in self.hayatta_kalma_bombalar:
-                    bomba_rect = pygame.Rect(bomba_x, bomba_y, self.hucre_boyutu, self.hucre_boyutu)
-                    pygame.draw.rect(oyun_surface, KIRMIZI, bomba_rect)
+                    ekran_x = bomba_x + self.oyun_offset_x
+                    ekran_y = bomba_y + self.oyun_offset_y
+                    bomba_rect = pygame.Rect(ekran_x, ekran_y, self.hucre_boyutu, self.hucre_boyutu)
+                    pygame.draw.rect(self.ekran, KIRMIZI, bomba_rect)
                     # Bomba ikonu
                     bomba_emoji = self.menu.render_emoji("💣", self.hucre_boyutu - 4, BEYAZ)
-                    oyun_surface.blit(bomba_emoji, (bomba_x + 2, bomba_y + 2))
+                    self.ekran.blit(bomba_emoji, (ekran_x + 2, ekran_y + 2))
             
-            # Oyun elemanları - surface'e çiz
-            self.yilan.ciz(oyun_surface)
-            # PVP veya Bot modunda 2. yılanı da çiz
+            # Oyun elemanlarını çiz - OFFSET İLE
+            self.yilan.ciz(self.ekran, self.oyun_offset_x, self.oyun_offset_y)
+            # PVP veya Bot modunda 2. yılanı da çiz - OFFSET İLE
             if (self.pvp_modu or self.bot_modu) and self.yilan2:
-                self.yilan2.ciz(oyun_surface)
+                self.yilan2.ciz(self.ekran, self.oyun_offset_x, self.oyun_offset_y)
             
-            self.yem.ciz(oyun_surface)
+            self.yem.ciz(self.ekran, self.oyun_offset_x, self.oyun_offset_y)
             
-            # Özel yem varsa çiz
+            # Özel yem varsa çiz - OFFSET İLE
             if self.ozel_yem_aktif and self.ozel_yem:
-                self.ozel_yem.ciz(oyun_surface)
+                self.ozel_yem.ciz(self.ekran, self.oyun_offset_x, self.oyun_offset_y)
             
-            # PVP özel yemleri çiz
+            # PVP özel yemleri çiz - OFFSET İLE
             if (self.pvp_modu or self.bot_modu):
                 if self.pvp_ozel_yem_p1:
-                    self.pvp_ozel_yem_p1.ciz(oyun_surface)
+                    self.pvp_ozel_yem_p1.ciz(self.ekran, self.oyun_offset_x, self.oyun_offset_y)
                 if self.pvp_ozel_yem_p2:
-                    self.pvp_ozel_yem_p2.ciz(oyun_surface)
+                    self.pvp_ozel_yem_p2.ciz(self.ekran, self.oyun_offset_x, self.oyun_offset_y)
             
-            # Sahte yem varsa çiz
+            # Sahte yem varsa çiz - OFFSET İLE
             if self.sahte_yem:
-                self.sahte_yem.ciz(oyun_surface)
+                self.sahte_yem.ciz(self.ekran, self.oyun_offset_x, self.oyun_offset_y)
             
-            # Yem yeme ve puan efektlerini çiz (en üstte)
-            self.yem_yeme_efekti.ciz(oyun_surface)
-            self.puan_efekti.ciz(oyun_surface)
+            # Yem yeme ve puan efektlerini çiz (en üstte) - OFFSET İLE
+            self.yem_yeme_efekti.ciz(self.ekran, self.oyun_offset_x, self.oyun_offset_y)
+            self.puan_efekti.ciz(self.ekran, self.oyun_offset_x, self.oyun_offset_y)
             
             # Patlama animasyonu çiz (en üstte)
             if self.patlama_animasyon_sayaci > 0 and self.patlama_pozisyon:
-                self._patlama_animasyonu_ciz_surface(oyun_surface)
-            
-            # Oyun surface'ini ana ekrana çiz (ortalanmış)
-            self.ekran.blit(oyun_surface, (self.oyun_offset_x, self.oyun_offset_y))
-            
-            # Oyun alanının etrafına çerçeve çiz (opsiyonel)
-            cerceve_rect = pygame.Rect(self.oyun_offset_x - 2, self.oyun_offset_y - 2, 
-                                       self.oyun_genislik + 4, self.oyun_yukseklik + 4)
-            pygame.draw.rect(self.ekran, (50, 200, 100), cerceve_rect, 3)
+                self._patlama_animasyonu_ciz(self.ekran)
             
             # Skor gösterimi - ANA EKRANA ÇİZ (oyun alanının dışında)
             if self.pvp_modu:
@@ -1582,8 +1662,8 @@ class Oyun:
             else:
                 self.menu.oyun_bitti_ekrani(self.yilan.skor, self.en_yuksek_skor, self.yeni_basarimlar)
     
-    def _patlama_animasyonu_ciz_surface(self, surface):
-        """Patlama animasyonunu oyun surface'ine çizer"""
+    def _patlama_animasyonu_ciz(self, surface):
+        """Patlama animasyonunu çizer"""
         if not self.patlama_pozisyon:
             return
         

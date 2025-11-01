@@ -18,7 +18,11 @@ class AyarYoneticisi:
             "bomba_modu": False,  # Bomba modu kapalı
             "aktif_tema": "Klasik",  # Varsayılan tema
             "menu_muzik": "Normal",  # Ana menü müziği
-            "oyun_muzik": "Normal"   # Oyun içi müziği
+            "oyun_muzik": "Normal",   # Oyun içi müziği
+            "ses_acik": True,  # Ses efektleri açık
+            "muzik_acik": True,  # Müzik açık
+            "ses_seviyesi": 0.7,  # Ses efekti seviyesi
+            "muzik_seviyesi": 0.5  # Müzik seviyesi
         }
     
     def ayarlari_yukle(self):

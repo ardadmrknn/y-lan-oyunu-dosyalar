@@ -545,7 +545,7 @@ class Menu:
             scroll_rect = scroll_text.get_rect(center=(self.ekran_genislik // 2, 50))
             self.ekran.blit(scroll_text, scroll_rect)
 
-    def grafik_ayarlari_menu_ciz(self, tam_ekran, cozunurluk="1920x1080"):
+    def grafik_ayarlari_menu_ciz(self, tam_ekran, cozunurluk="Tam Ekran"):
         """Grafik ayarları menüsü"""
         mouse_pos = self.mouse_pozisyonu_al()
         
@@ -554,94 +554,77 @@ class Menu:
         self.ekran.blit(baslik, baslik.get_rect(center=(self.ekran_genislik // 2, 50)))
         
         # Alt başlık
-        alt_baslik = self.kucuk_font.render('Ekran ve görüntü ayarlarını yapılandırın', True, ACIK_GRI)
-        self.ekran.blit(alt_baslik, alt_baslik.get_rect(center=(self.ekran_genislik // 2, 85)))
+        alt_baslik = self.kucuk_font.render('Ekran çözünürlüğünü seçin', True, ACIK_GRI)
+        self.ekran.blit(alt_baslik, alt_baslik.get_rect(center=(self.ekran_genislik // 2, 90)))
         
-        # Tam ekran/Pencere kartı
-        y_pos = 140
-        card_width, card_height = 680, 55
+        # Çözünürlük seçenekleri - scroll destekli
+        if not hasattr(self, 'grafik_scroll_offset'):
+            self.grafik_scroll_offset = 0
         
-        self.tam_ekran_rect = pygame.Rect(self.ekran_genislik // 2 - card_width // 2, y_pos, card_width, card_height)
+        y_start = 140
+        button_width = 280
+        button_height = 50
+        gap = 15
+        col_gap = 20
+        buttons_per_row = 3
         
-        if self.tam_ekran_rect.collidepoint(mouse_pos):
-            pygame.draw.rect(self.ekran, (40, 50, 70), self.tam_ekran_rect, border_radius=10)
-            pygame.draw.rect(self.ekran, (100, 200, 255), self.tam_ekran_rect, 2, border_radius=10)
-        else:
-            pygame.draw.rect(self.ekran, (25, 25, 35), self.tam_ekran_rect, border_radius=10)
-            pygame.draw.rect(self.ekran, (70, 70, 90), self.tam_ekran_rect, 1, border_radius=10)
+        # Rect'leri sakla
+        self.cozunurluk_rects = []
         
-        # İkon
-        ikon = '🖥️' if tam_ekran else '🪟'
-        ikon_img = self.render_emoji(ikon, 36)
-        self.ekran.blit(ikon_img, (self.tam_ekran_rect.x + 20, self.tam_ekran_rect.y + 10))
+        # Çözünürlük seçeneklerini çiz (3 sütun halinde)
+        total_rows = (len(COZUNURLUK_SECENEKLERI) + buttons_per_row - 1) // buttons_per_row
         
-        # Başlık
-        ekran_text = self.font.render('Ekran Modu', True, BEYAZ)
-        self.ekran.blit(ekran_text, (self.tam_ekran_rect.x + 70, self.tam_ekran_rect.y + 8))
-        
-        # Durum
-        durum_text = "Tam Ekran" if tam_ekran else "Pencere"
-        durum_renk = YESIL if tam_ekran else TURUNCU
-        durum = self.kucuk_font.render(durum_text, True, durum_renk)
-        durum_rect = durum.get_rect(right=self.tam_ekran_rect.right - 20, centery=self.tam_ekran_rect.centery)
-        self.ekran.blit(durum, durum_rect)
-        
-        # ÇÖZÜNÜRLlÜK SEÇİCİ (sadece pencere modunda)
-        if not tam_ekran:
-            y_pos += 80
-            coz_baslik = self.font.render('Pencere Çözünürlüğü:', True, BEYAZ)
-            self.ekran.blit(coz_baslik, (self.ekran_genislik // 2 - card_width // 2, y_pos - 25))
+        for idx, (isim, genislik, yukseklik) in enumerate(COZUNURLUK_SECENEKLERI):
+            row = idx // buttons_per_row
+            col = idx % buttons_per_row
             
-            # Çözünürlük seçenekleri
-            cozunurlukler = ["1920x1080", "1600x900", "1280x720"]
-            button_width = 200
-            button_height = 45
-            gap = 15
+            x = self.ekran_genislik // 2 - (buttons_per_row * button_width + (buttons_per_row - 1) * col_gap) // 2 + col * (button_width + col_gap)
+            y = y_start + row * (button_height + gap) + self.grafik_scroll_offset
             
-            # Rect'leri sakla (olay yönetimi için)
-            self.cozunurluk_rects = {}
+            # Ekran dışındaysa çizme
+            if y < 100 or y > self.ekran_yukseklik - 100:
+                continue
             
-            start_x = self.ekran_genislik // 2 - (len(cozunurlukler) * button_width + (len(cozunurlukler) - 1) * gap) // 2
+            rect = pygame.Rect(x, y, button_width, button_height)
+            self.cozunurluk_rects.append((isim, rect))
             
-            for i, coz in enumerate(cozunurlukler):
-                x = start_x + i * (button_width + gap)
-                rect = pygame.Rect(x, y_pos, button_width, button_height)
-                self.cozunurluk_rects[coz] = rect
-                
-                # Seçili çözünürlüğü vurgula
-                secili = coz == cozunurluk
-                
-                if rect.collidepoint(mouse_pos):
-                    pygame.draw.rect(self.ekran, (40, 50, 70), rect, border_radius=8)
-                    pygame.draw.rect(self.ekran, MAVI if secili else (100, 200, 255), rect, 2, border_radius=8)
+            # Seçili çözünürlüğü vurgula
+            secili = isim == cozunurluk
+            
+            if rect.collidepoint(mouse_pos):
+                pygame.draw.rect(self.ekran, (40, 50, 70), rect, border_radius=8)
+                pygame.draw.rect(self.ekran, MAVI if secili else (100, 200, 255), rect, 2, border_radius=8)
+            else:
+                if secili:
+                    pygame.draw.rect(self.ekran, (30, 80, 120), rect, border_radius=8)
+                    pygame.draw.rect(self.ekran, MAVI, rect, 2, border_radius=8)
                 else:
-                    if secili:
-                        pygame.draw.rect(self.ekran, (30, 80, 120), rect, border_radius=8)
-                        pygame.draw.rect(self.ekran, MAVI, rect, 2, border_radius=8)
-                    else:
-                        pygame.draw.rect(self.ekran, (25, 25, 35), rect, border_radius=8)
-                        pygame.draw.rect(self.ekran, (70, 70, 90), rect, 1, border_radius=8)
-                
-                # Çözünürlük metni
-                text = self.kucuk_font.render(coz, True, BEYAZ if secili else ACIK_GRI)
+                    pygame.draw.rect(self.ekran, (25, 25, 35), rect, border_radius=8)
+                    pygame.draw.rect(self.ekran, (70, 70, 90), rect, 1, border_radius=8)
+            
+            # Çözünürlük metni
+            if isim == "Tam Ekran":
+                # Tam ekran için özel ikon
+                ikon = self.render_emoji('🖥️', 24)
+                self.ekran.blit(ikon, (rect.x + 10, rect.y + 13))
+                text = self.kucuk_font.render(isim, True, BEYAZ if secili else ACIK_GRI)
+                self.ekran.blit(text, (rect.x + 45, rect.y + 15))
+            else:
+                text = self.kucuk_font.render(isim, True, BEYAZ if secili else ACIK_GRI)
                 text_rect = text.get_rect(center=rect.center)
                 self.ekran.blit(text, text_rect)
-                
-                # Seçili ise ✓ işareti
-                if secili:
-                    check = self.kucuk_font.render('✓', True, YESIL)
-                    self.ekran.blit(check, (rect.right - 25, rect.y + 5))
             
-            info_y = y_pos + 85
-        else:
-            self.cozunurluk_rects = {}  # Tam ekranda çözünürlük seçici yok
-            info_y = y_pos + 100
+            # Seçili ise ✓ işareti
+            if secili:
+                check = self.font.render('✓', True, YESIL)
+                self.ekran.blit(check, (rect.right - 30, rect.y + 10))
         
         # Bilgi mesajı
-        if tam_ekran:
-            info_text = self.kucuk_font.render('Tam ekran modu cihazınızın ekranına göre otomatik ayarlanır', True, ACIK_GRI)
+        info_y = self.ekran_yukseklik - 80
+        if cozunurluk == "Tam Ekran":
+            info_text = self.kucuk_font.render('Tam ekran: Cihazınızın ekran çözünürlüğüne otomatik uyarlanır', True, ACIK_GRI)
         else:
-            info_text = self.kucuk_font.render('Pencere boyutunu seçtikten sonra değişiklik uygulanır', True, ACIK_GRI)
+            info_text = self.kucuk_font.render(f'Seçili: {cozunurluk} - Değişiklik anında uygulanır', True, ACIK_GRI)
         self.ekran.blit(info_text, info_text.get_rect(center=(self.ekran_genislik // 2, info_y)))
         
         # Geri dön

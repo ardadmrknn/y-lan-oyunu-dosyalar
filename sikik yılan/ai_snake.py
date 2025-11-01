@@ -17,9 +17,9 @@ class AIYilan(Yilan):
         "zor": {"karar_araligi": 1, "hata_orani": 0.03}     # %3 hata
     }
     
-    def __init__(self, ekran_genislik=GENISLIK, ekran_yukseklik=YUKSEKLIK, zorluk="orta"):
+    def __init__(self, ekran_genislik=GENISLIK, ekran_yukseklik=YUKSEKLIK, zorluk="orta", hucre_boyutu=HUCRE_BOYUTU):
         # Bot her zaman turuncu renkte (renk_index=4)
-        super().__init__(ekran_genislik, ekran_yukseklik, renk_index=4, yuz_index=0)
+        super().__init__(ekran_genislik, ekran_yukseklik, renk_index=4, yuz_index=0, aksesuar_index=0, hucre_boyutu=hucre_boyutu)
         self.zorluk = zorluk
         self.karar_sayaci = 0
         self.hedef_yem = None

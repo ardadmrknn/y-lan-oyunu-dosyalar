@@ -22,14 +22,20 @@ GENISLIK = 800
 YUKSEKLIK = 520  # 26 hücre * 20 = 520
 HUCRE_BOYUTU = 20
 
-# Çözünürlük seçenekleri
-COZUNURLUK_SECENEKLERI = {
-    "1280x720": (1280, 720, 20),   # HD - 64x36 hücre
-    "1600x900": (1600, 900, 25),   # HD+ - 64x36 hücre
-    "1920x1080": (1920, 1080, 30), # Full HD - 64x36 hücre
-}
-
-COZUNURLUK_ISIMLERI = ["1280x720 (HD)", "1600x900 (HD+)", "1920x1080 (Full HD)"]
+# Çözünürlük seçenekleri - 10 farklı seçenek + Tam Ekran
+COZUNURLUK_SECENEKLERI = [
+    ("800x600", 800, 600),
+    ("1024x768", 1024, 768),
+    ("1280x720", 1280, 720),
+    ("1280x800", 1280, 800),
+    ("1366x768", 1366, 768),
+    ("1440x900", 1440, 900),
+    ("1600x900", 1600, 900),
+    ("1680x1050", 1680, 1050),
+    ("1920x1080", 1920, 1080),
+    ("2560x1440", 2560, 1440),
+    ("Tam Ekran", 0, 0)  # 0,0 = sistem tam ekran çözünürlüğü
+]
 
 def dinamik_cozunurluk_hesapla(ekran_genislik, ekran_yukseklik):
     """
@@ -71,7 +77,7 @@ def dinamik_cozunurluk_hesapla(ekran_genislik, ekran_yukseklik):
 
 # Oyun hızı seviyeleri - Windows optimizasyonu için artırıldı
 HIZ_ISIMLERI = ["Yavaş", "Normal", "Hızlı", "Çok Hızlı", "Ultra"]
-HIZ_FPS = [15, 30, 60, 90, 120]  # Modern FPS seviyeleri
+HIZ_FPS = [8, 15, 30, 45, 60]  # %50 yavaşlatılmış FPS seviyeleri
 VARSAYILAN_HIZ_SEVIYESI = 1  # Normal (12 FPS)
 
 # Arka plan resimleri klasörü
