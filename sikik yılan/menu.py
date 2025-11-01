@@ -1,0 +1,2359 @@
+"""
+Menü sistemleri - Ana menü, Ayarlar, Oyun Bitti ekranları
+"""
+import pygame
+import os
+from constants import *
+
+
+class Menu:
+    def __init__(self, ekran):
+        self.ekran = ekran
+        # Ekran bilgileri
+        self.ekran_genislik = ekran.get_width()
+        self.ekran_yukseklik = ekran.get_height()
+        self.oyun_offset_x = 0
+        self.oyun_offset_y = 0
+        
+        # Normal metin için font
+        try:
+            # Helvetica Neue emojileri destekler
+            self.font = pygame.font.SysFont('Helvetica Neue', 36)
+            self.buyuk_font = pygame.font.SysFont('Helvetica Neue', 72)
+            self.kucuk_font = pygame.font.SysFont('Helvetica Neue', 24)
+        except:
+            try:
+                # Alternatif: Menlo (monospace, iyi emoji desteği)
+                self.font = pygame.font.SysFont('menlo', 36)
+                self.buyuk_font = pygame.font.SysFont('menlo', 72)
+                self.kucuk_font = pygame.font.SysFont('menlo', 24)
+            except:
+                # Son çare
+                self.font = pygame.font.SysFont('arial', 36)
+                self.buyuk_font = pygame.font.SysFont('arial', 72)
+                self.kucuk_font = pygame.font.SysFont('arial', 24)
+        # Buton alanları için
+        self.basla_rect = None
+        self.ayarlar_rect = None
+        self.modlar_rect = None  # Modlar butonu
+        self.hiz_rect = None
+        self.arkaplan_rect = None
+        self.yilan_rect = None
+        self.bomba_rect = None  # Bomba modu butonu (modlar menüsünde)
+        self.sifirla_rect = None  # Başarımları sıfırla butonu
+        # Tam ekran için offset ve scale (game.py'den gelecek)
+        self.offset_x = 0
+        self.offset_y = 0
+        self.scale = 1.0
+        self.tam_ekran = False
+        # Ayarlar alt menüsü (HIZ veya ARKAPLAN)
+        self.ayar_alt_menu = None
+        # Başarımlar scroll offset
+        self.basarim_scroll_offset = 0
+        # Bot zorluk seçim scroll offset
+        self.bot_zorluk_scroll_offset = 0
+        # Ayarlar menüsü scroll offset
+        self.ayarlar_scroll_offset = 0
+        # Ana menü scroll offset
+        self.ana_menu_scroll_offset = 0
+        # Emoji cache
+        self.emoji_cache = {}
+        
+        # İstatistik icon'larını yükle
+        self.stats_icon = None
+        self.stat_icons = {}
+        try:
+            # Başlık icon'u
+            icon_path = os.path.join("icons", "stats.png")
+            if os.path.exists(icon_path):
+                self.stats_icon = pygame.image.load(icon_path).convert_alpha()
+            
+            # İstatistik satırları için icon'lar (24x24)
+            icon_files = {
+                'game': 'gamepad.png',
+                'score': 'stats.png', 
+                'trophy': 'trophy.png',
+                'chart': 'chart.png',
+                'apple': 'apple.png',
+                'crown': 'crown.png',
+                'diamond': 'diamond.png',
+                'snake': 'snake.png',
+                'skull': 'skull.png',
+                'bomb': 'bomb.png',
+                'stopwatch': 'stopwatch.png'
+            }
+            
+            for key, filename in icon_files.items():
+                path = os.path.join("icons", filename)
+                if os.path.exists(path):
+                    icon = pygame.image.load(path).convert_alpha()
+                    # Satır icon'larını 20x20'ye küçült
+                    if key == 'score':  # score'u da küçült
+                        icon = pygame.transform.smoothscale(icon, (20, 20))
+                    else:
+                        icon = pygame.transform.smoothscale(icon, (20, 20))
+                    self.stat_icons[key] = icon
+        except Exception as e:
+            print(f"Stat icons yüklenemedi: {e}")
+    
+    def render_emoji(self, emoji_char, size=40, color=(255, 255, 255)):
+        """PNG emoji ikonlarını yükler ve boyutlandırır"""
+        # Cache'de var mı kontrol et
+        cache_key = f"{emoji_char}_{size}"
+        if cache_key in self.emoji_cache:
+            return self.emoji_cache[cache_key]
+        
+        # Emoji karakterine göre PNG dosyası seç
+        icon_map = {
+            "🎮": "icons/gamepad.png",
+            "💣": "icons/bomb.png",
+            "⚔️": "icons/swords.png",
+            "🤖": "icons/robot.png",
+            "🏆": "icons/trophy.png",
+            "⭐": "icons/star.png",
+            "🎵": "icons/music.png",
+            "🔊": "icons/volume.png",
+            "🔕": "icons/mute.png",
+            "🔇": "icons/mute.png",
+            "⚡": "icons/lightning.png",
+            "🖼️": "icons/picture.png",
+            "🐍": "icons/snake.png",
+            "🎸": "icons/guitar.png",
+            "👑": "icons/crown.png",
+            "🔄": "icons/refresh.png",
+            "🔒": "icons/lock.png",
+            "✓": "icons/check.png",
+            "🖱️": "icons/mouse.png",
+            "❤️": "icons/heart.png"
+        }
+        
+        icon_path = icon_map.get(emoji_char)
+        
+        if icon_path and os.path.exists(icon_path):
+            try:
+                # PNG dosyasını yükle
+                icon = pygame.image.load(icon_path).convert_alpha()
+                # Boyutlandır
+                icon = pygame.transform.smoothscale(icon, (size, size))
+                # Cache'e ekle
+                self.emoji_cache[cache_key] = icon
+                return icon
+            except Exception as e:
+                print(f"❌ İkon yükleme hatası ({icon_path}): {e}")
+        
+        # Fallback: basit şekil çiz
+        emoji_surf = pygame.Surface((size, size), pygame.SRCALPHA)
+        center = size // 2
+        pygame.draw.circle(emoji_surf, color, (center, center), size//2 - 2, 3)
+        
+        # Cache'e ekle
+        self.emoji_cache[cache_key] = emoji_surf
+        return emoji_surf
+    
+    def _buton_ciz(self, rect, bg_color, border_color, text, font, border_radius=12, border_width=3):
+        """Generic buton çizim metodu - tekrar eden kodu azaltır"""
+        pygame.draw.rect(self.ekran, bg_color, rect, border_radius=border_radius)
+        pygame.draw.rect(self.ekran, border_color, rect, border_width, border_radius=border_radius)
+        text_surface = font.render(text, True, BEYAZ)
+        text_rect = text_surface.get_rect(center=rect.center)
+        self.ekran.blit(text_surface, text_rect)
+        return rect
+    
+    def _hover_buton_ciz(self, rect, text, normal_color, hover_bg_color, mouse_pos, hover_color=YESIL):
+        """Hover efektli buton çiz - ana menü butonları için"""
+        is_hover = rect.collidepoint(mouse_pos)
+        text_color = hover_color if is_hover else normal_color
+        
+        if is_hover:
+            pygame.draw.rect(self.ekran, hover_bg_color, rect, border_radius=12)
+            pygame.draw.rect(self.ekran, normal_color, rect, 3, border_radius=12)
+        
+        text_surface = self.font.render(text, True, text_color)
+        text_rect = text_surface.get_rect(center=rect.center)
+        self.ekran.blit(text_surface, text_rect)
+    
+    def arkaplan_dosyalari_getir(self):
+        """backgrounds klasöründeki resimleri listeler"""
+        try:
+            if os.path.exists(ARKAPLAN_KLASORU):
+                dosyalar = [f for f in os.listdir(ARKAPLAN_KLASORU) 
+                           if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif'))]
+                return sorted(dosyalar)
+            return []
+        except:
+            return []
+
+    def mouse_pozisyonu_al(self):
+        """Fare pozisyonunu alır, tam ekranda düzeltir"""
+        mouse_pos = pygame.mouse.get_pos()
+        if self.tam_ekran:
+            mouse_pos = (
+                int((mouse_pos[0] - self.offset_x) / self.scale),
+                int((mouse_pos[1] - self.offset_y) / self.scale)
+            )
+        return mouse_pos
+
+    def ana_menu_ciz(self, en_yuksek_skor):
+        """Ana menü ekranını çizer"""
+        # Arka plan game.py'de çizildiği için burada fill yapmıyoruz
+        
+        # Fare pozisyonu al
+        mouse_pos = self.mouse_pozisyonu_al()
+        
+        # Ekran genişliğine göre ölçeklendirme faktörü hesapla
+        # 1920 referans genişlik olsun - DAHA BÜYÜK
+        scale_factor = self.ekran_genislik / 1600.0  # 1920 yerine 1600 - %20 daha büyük
+        scale_factor = max(1.0, min(2.5, scale_factor))  # Minimum 1.0x, maksimum 2.5x
+        
+        # Fontları ölçeklendir - DAHA BÜYÜK
+        buyuk_font_size = int(90 * scale_factor)  # 72'den 90'a
+        orta_font_size = int(48 * scale_factor)   # 36'dan 48'e
+        kucuk_font_size = int(28 * scale_factor)  # 24'ten 28'e
+        
+        # Dinamik fontlar oluştur
+        try:
+            buyuk_font = pygame.font.SysFont('Helvetica Neue', buyuk_font_size)
+            orta_font = pygame.font.SysFont('Helvetica Neue', orta_font_size)
+            kucuk_font = pygame.font.SysFont('Helvetica Neue', kucuk_font_size)
+        except:
+            buyuk_font = pygame.font.SysFont('arial', buyuk_font_size)
+            orta_font = pygame.font.SysFont('arial', orta_font_size)
+            kucuk_font = pygame.font.SysFont('arial', kucuk_font_size)
+        
+        # Başlık - ekranın ortasında yukarıda, ölçeklendirilmiş
+        baslik_y = int(100 * scale_factor)  # Daha aşağıda
+        baslik = buyuk_font.render('YILAN OYUNU', True, YESIL)
+        baslik_rect = baslik.get_rect(center=(self.ekran_genislik // 2, baslik_y))
+        self.ekran.blit(baslik, baslik_rect)
+        
+        # Alt başlık - daha büyük ve belirgin
+        alt_baslik_y = int(170 * scale_factor)
+        alt_baslik_text = '~ Klasik yılan oyununun modern hali ~'
+        
+        # Gölge
+        alt_baslik_golge = kucuk_font.render(alt_baslik_text, True, (50, 50, 50))
+        alt_baslik_golge_rect = alt_baslik_golge.get_rect(center=(self.ekran_genislik // 2 + 2, alt_baslik_y + 2))
+        self.ekran.blit(alt_baslik_golge, alt_baslik_golge_rect)
+        
+        # Ana metin
+        alt_baslik = kucuk_font.render(alt_baslik_text, True, (180, 180, 200))
+        alt_baslik_rect = alt_baslik.get_rect(center=(self.ekran_genislik // 2, alt_baslik_y))
+        self.ekran.blit(alt_baslik, alt_baslik_rect)
+        
+        # Menü butonları için ayarlar - ölçeklendirilmiş ve DAHA BÜYÜK ARALIKLAR
+        buton_genislik = int(450 * scale_factor)   # 350'den 450'ye
+        buton_yukseklik = int(65 * scale_factor)   # 50'den 65'e
+        butonlar_x = self.ekran_genislik // 2 - buton_genislik // 2
+        ilk_buton_y = int(250 * scale_factor)      # 230'dan 250'ye
+        buton_aralik = int(90 * scale_factor)      # 75'ten 90'a - daha fazla boşluk
+        
+        # Scroll offset'ini uygula
+        scroll_y = self.ana_menu_scroll_offset * scale_factor
+        
+        # BAŞLA butonu
+        basla_y = ilk_buton_y + scroll_y
+        self.basla_rect = pygame.Rect(butonlar_x, basla_y, buton_genislik, buton_yukseklik)
+        self._hover_buton_ciz_scaled(self.basla_rect, 'BAŞLA', BEYAZ, KOYUYESIL, mouse_pos, orta_font)
+        
+        # MODLAR butonu
+        modlar_y = ilk_buton_y + buton_aralik + scroll_y
+        self.modlar_rect = pygame.Rect(butonlar_x, modlar_y, buton_genislik, buton_yukseklik)
+        self._hover_buton_ciz_scaled(self.modlar_rect, 'MODLAR', MAVI, (0, 0, 100), mouse_pos, orta_font)
+        
+        # AYARLAR butonu
+        ayarlar_y = ilk_buton_y + buton_aralik * 2 + scroll_y
+        self.ayarlar_rect = pygame.Rect(butonlar_x, ayarlar_y, buton_genislik, buton_yukseklik)
+        self._hover_buton_ciz_scaled(self.ayarlar_rect, 'AYARLAR', TURUNCU, (139, 69, 19), mouse_pos, orta_font)
+        
+        # BAŞARIMLAR butonu
+        basarimlar_y = ilk_buton_y + buton_aralik * 3 + scroll_y
+        self.basarimlar_rect = pygame.Rect(butonlar_x, basarimlar_y, buton_genislik, buton_yukseklik)
+        self._hover_buton_ciz_scaled(self.basarimlar_rect, 'BAŞARIMLAR', (255, 215, 0), (139, 115, 0), mouse_pos, orta_font)
+        
+        # İSTATİSTİKLER butonu
+        istatistikler_y = ilk_buton_y + buton_aralik * 4 + scroll_y
+        self.istatistikler_rect = pygame.Rect(butonlar_x, istatistikler_y, buton_genislik, buton_yukseklik)
+        self._hover_buton_ciz_scaled(self.istatistikler_rect, 'İSTATİSTİKLER', (100, 200, 255), (50, 100, 139), mouse_pos, orta_font)
+        
+        # EMEĞİ GEÇENLER butonu - ekranın en altında
+        krediler_y = self.ekran_yukseklik - int(60 * scale_factor) + scroll_y  # Ekranın altından 60px yukarıda
+        kalp_icon_size = int(22 * scale_factor)
+        
+        # Kalp ikonu
+        kalp_icon = self.render_emoji("❤️", kalp_icon_size, (255, 50, 80))
+        kalp_x = self.ekran_genislik // 2 - int(80 * scale_factor)
+        kalp_y = krediler_y - kalp_icon_size // 2
+        
+        # Metin
+        krediler_text = kucuk_font.render('Emeği Geçenler', True, ACIK_GRI)
+        krediler_text_rect = krediler_text.get_rect(midleft=(kalp_x + kalp_icon_size + 5, krediler_y))
+        
+        # Clickable rect
+        text_width = krediler_text_rect.width
+        total_width = kalp_icon_size + 5 + text_width
+        self.krediler_rect = pygame.Rect(
+            self.ekran_genislik // 2 - total_width // 2 - 10, 
+            krediler_y - 12, 
+            total_width + 20, 
+            24
+        )
+        
+        # Hover efekti
+        krediler_renk = ACIK_GRI
+        if self.krediler_rect.collidepoint(mouse_pos):
+            krediler_renk = (255, 215, 0)
+            pygame.draw.rect(self.ekran, (40, 35, 20), self.krediler_rect, border_radius=5)
+            pygame.draw.rect(self.ekran, (255, 215, 0), self.krediler_rect, 2, border_radius=5)
+        
+        # Kalp ve metni çiz
+        self.ekran.blit(kalp_icon, (kalp_x, kalp_y))
+        krediler_text = kucuk_font.render('Emeği Geçenler', True, krediler_renk)
+        krediler_text_rect = krediler_text.get_rect(midleft=(kalp_x + kalp_icon_size + 5, krediler_y))
+        self.ekran.blit(krediler_text, krediler_text_rect)
+        
+        # Scroll göstergesi
+        if self.ana_menu_scroll_offset < 0:
+            scroll_text = kucuk_font.render('▲ Mouse tekerleği ile yukarı kaydır', True, ACIK_GRI)
+            scroll_rect = scroll_text.get_rect(center=(self.ekran_genislik // 2, int(50 * scale_factor)))
+            self.ekran.blit(scroll_text, scroll_rect)
+    
+    def _hover_buton_ciz_scaled(self, rect, text, normal_color, hover_bg_color, mouse_pos, font, hover_color=YESIL):
+        """Hover efektli buton çiz - ölçeklendirilmiş font ile"""
+        is_hover = rect.collidepoint(mouse_pos)
+        text_color = hover_color if is_hover else normal_color
+        
+        if is_hover:
+            pygame.draw.rect(self.ekran, hover_bg_color, rect, border_radius=12)
+            pygame.draw.rect(self.ekran, normal_color, rect, 3, border_radius=12)
+        
+        text_surface = font.render(text, True, text_color)
+        text_rect = text_surface.get_rect(center=rect.center)
+        self.ekran.blit(text_surface, text_rect)
+
+    def ayarlar_menu_ciz(self, hiz_seviyesi, menu_arkaplan, oyun_arkaplan, ses_acik=True, muzik_acik=True):
+        """Ayarlar menüsü ana ekranını çizer"""
+        # Arka plan game.py'de çizildiği için burada fill yapmıyoruz
+        
+        # Fare pozisyonu al
+        mouse_pos = self.mouse_pozisyonu_al()
+        
+        # Ölçeklendirme faktörü - DAHA BÜYÜK
+        scale_factor = self.ekran_genislik / 1600.0  # 1920 yerine 1600
+        scale_factor = max(1.0, min(2.5, scale_factor))
+        
+        # Dinamik fontlar - DAHA BÜYÜK
+        buyuk_font_size = int(90 * scale_factor)
+        orta_font_size = int(40 * scale_factor)
+        kucuk_font_size = int(28 * scale_factor)
+        try:
+            buyuk_font = pygame.font.SysFont('Helvetica Neue', buyuk_font_size)
+            orta_font = pygame.font.SysFont('Helvetica Neue', orta_font_size)
+            kucuk_font = pygame.font.SysFont('Helvetica Neue', kucuk_font_size)
+        except:
+            buyuk_font = pygame.font.SysFont('arial', buyuk_font_size)
+            orta_font = pygame.font.SysFont('arial', orta_font_size)
+            kucuk_font = pygame.font.SysFont('arial', kucuk_font_size)
+        
+        # Başlık
+        baslik = buyuk_font.render('AYARLAR', True, TURUNCU)
+        baslik_rect = baslik.get_rect(center=(self.ekran_genislik // 2, int(40 * scale_factor)))
+        self.ekran.blit(baslik, baslik_rect)
+        
+        # Alt başlık
+        alt_baslik = kucuk_font.render('Oyun tercihlerinizi özelleştirin', True, ACIK_GRI)
+        alt_baslik_rect = alt_baslik.get_rect(center=(self.ekran_genislik // 2, int(75 * scale_factor)))
+        self.ekran.blit(alt_baslik, alt_baslik_rect)
+        
+        # Ayar kartları - ölçeklendirilmiş ve DAHA BÜYÜK ARALIKLAR
+        y_start = int(140 * scale_factor) + self.ayarlar_scroll_offset * scale_factor
+        card_spacing = int(90 * scale_factor)  # 75'ten 90'a - daha fazla boşluk
+        card_width = int(850 * scale_factor)   # 680'den 850'ye
+        card_height = int(70 * scale_factor)   # 55'ten 70'e
+        
+        # Kart 1: Ses Efektleri
+        ses_y = y_start
+        self.ses_rect = pygame.Rect(self.ekran_genislik // 2 - card_width // 2, ses_y, card_width, card_height)
+        
+        if self.ses_rect.collidepoint(mouse_pos):
+            pygame.draw.rect(self.ekran, (40, 50, 70), self.ses_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (100, 200, 255), self.ses_rect, 2, border_radius=10)
+        else:
+            pygame.draw.rect(self.ekran, (25, 25, 35), self.ses_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (70, 70, 90), self.ses_rect, 1, border_radius=10)
+        
+        # İkon ve başlık - ölçeklendirilmiş
+        ikon_boyutu = int(45 * scale_factor)  # 36'dan 45'e
+        ses_ikon = "🔊" if ses_acik else "🔇"
+        ikon_img = self.render_emoji(ses_ikon, ikon_boyutu)
+        self.ekran.blit(ikon_img, (self.ses_rect.x + int(20 * scale_factor), self.ses_rect.y + int(12 * scale_factor)))
+        
+        ses_text = orta_font.render('Ses Efektleri', True, BEYAZ)
+        self.ekran.blit(ses_text, (self.ses_rect.x + int(80 * scale_factor), self.ses_rect.y + int(15 * scale_factor)))
+        
+        # Durum
+        ses_durum = kucuk_font.render("Açık" if ses_acik else "Kapalı", True, YESIL if ses_acik else KIRMIZI)
+        ses_durum_rect = ses_durum.get_rect(right=self.ses_rect.right - int(20 * scale_factor), centery=self.ses_rect.centery)
+        self.ekran.blit(ses_durum, ses_durum_rect)
+        
+        # Kart 2: Müzik
+        muzik_y = ses_y + card_spacing
+        self.muzik_rect = pygame.Rect(self.ekran_genislik // 2 - card_width // 2, muzik_y, card_width, card_height)
+        
+        if self.muzik_rect.collidepoint(mouse_pos):
+            pygame.draw.rect(self.ekran, (40, 50, 70), self.muzik_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (100, 200, 255), self.muzik_rect, 2, border_radius=10)
+        else:
+            pygame.draw.rect(self.ekran, (25, 25, 35), self.muzik_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (70, 70, 90), self.muzik_rect, 1, border_radius=10)
+        
+        muzik_ikon = "🎵" if muzik_acik else "🔕"
+        ikon_img = self.render_emoji(muzik_ikon, ikon_boyutu)
+        self.ekran.blit(ikon_img, (self.muzik_rect.x + int(20 * scale_factor), self.muzik_rect.y + int(12 * scale_factor)))
+        
+        muzik_text = orta_font.render('Müzik', True, BEYAZ)
+        self.ekran.blit(muzik_text, (self.muzik_rect.x + int(80 * scale_factor), self.muzik_rect.y + int(15 * scale_factor)))
+        
+        muzik_durum = kucuk_font.render("Açık" if muzik_acik else "Kapalı", True, YESIL if muzik_acik else KIRMIZI)
+        muzik_durum_rect = muzik_durum.get_rect(right=self.muzik_rect.right - int(20 * scale_factor), centery=self.muzik_rect.centery)
+        self.ekran.blit(muzik_durum, muzik_durum_rect)
+        
+        # Kart 3: Grafik Ayarları (YENİ!)
+        grafik_y = muzik_y + card_spacing
+        self.grafik_rect = pygame.Rect(self.ekran_genislik // 2 - card_width // 2, grafik_y, card_width, card_height)
+        
+        if self.grafik_rect.collidepoint(mouse_pos):
+            pygame.draw.rect(self.ekran, (40, 50, 70), self.grafik_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (100, 200, 255), self.grafik_rect, 2, border_radius=10)
+        else:
+            pygame.draw.rect(self.ekran, (25, 25, 35), self.grafik_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (70, 70, 90), self.grafik_rect, 1, border_radius=10)
+        
+        ikon_img = self.render_emoji('🖥️', 36)
+        self.ekran.blit(ikon_img, (self.grafik_rect.x + 20, self.grafik_rect.y + 10))
+        
+        grafik_text = self.font.render('Grafik Ayarları', True, BEYAZ)
+        self.ekran.blit(grafik_text, (self.grafik_rect.x + 70, self.grafik_rect.y + 8))
+        
+        grafik_ok = self.kucuk_font.render('›', True, (100, 200, 255))
+        grafik_ok_rect = grafik_ok.get_rect(right=self.grafik_rect.right - 20, centery=self.grafik_rect.centery)
+        self.ekran.blit(grafik_ok, grafik_ok_rect)
+        
+        # Kart 4: Oyun Hızı
+        hiz_y = grafik_y + card_spacing
+        self.hiz_rect = pygame.Rect(self.ekran_genislik // 2 - card_width // 2, hiz_y, card_width, card_height)
+        
+        if self.hiz_rect.collidepoint(mouse_pos):
+            pygame.draw.rect(self.ekran, (40, 50, 70), self.hiz_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (100, 200, 255), self.hiz_rect, 2, border_radius=10)
+        else:
+            pygame.draw.rect(self.ekran, (25, 25, 35), self.hiz_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (70, 70, 90), self.hiz_rect, 1, border_radius=10)
+        
+        ikon_img = self.render_emoji('⚡', 36)
+        self.ekran.blit(ikon_img, (self.hiz_rect.x + 20, self.hiz_rect.y + 10))
+        
+        hiz_text = self.font.render('Oyun Hızı', True, BEYAZ)
+        self.ekran.blit(hiz_text, (self.hiz_rect.x + 70, self.hiz_rect.y + 8))
+        
+        hiz_deger = self.kucuk_font.render(HIZ_ISIMLERI[hiz_seviyesi], True, (255, 215, 0))
+        hiz_deger_rect = hiz_deger.get_rect(right=self.hiz_rect.right - 20, centery=self.hiz_rect.centery)
+        self.ekran.blit(hiz_deger, hiz_deger_rect)
+        
+        # Kart 4: Arka Planlar
+        arkaplan_y = hiz_y + card_spacing
+        self.arkaplan_rect = pygame.Rect(self.ekran_genislik // 2 - card_width // 2, arkaplan_y, card_width, card_height)
+        
+        if self.arkaplan_rect.collidepoint(mouse_pos):
+            pygame.draw.rect(self.ekran, (40, 50, 70), self.arkaplan_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (100, 200, 255), self.arkaplan_rect, 2, border_radius=10)
+        else:
+            pygame.draw.rect(self.ekran, (25, 25, 35), self.arkaplan_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (70, 70, 90), self.arkaplan_rect, 1, border_radius=10)
+        
+        ikon_img = self.render_emoji('🖼️', 36)
+        self.ekran.blit(ikon_img, (self.arkaplan_rect.x + 20, self.arkaplan_rect.y + 10))
+        
+        arkaplan_text = self.font.render('Arka Planlar', True, BEYAZ)
+        self.ekran.blit(arkaplan_text, (self.arkaplan_rect.x + 70, self.arkaplan_rect.y + 8))
+        
+        menu_bg_text = "✓" if menu_arkaplan else "○"
+        oyun_bg_text = "✓" if oyun_arkaplan else "○"
+        bg_deger = self.kucuk_font.render(f'Menü {menu_bg_text} | Oyun {oyun_bg_text}', True, ACIK_GRI)
+        bg_deger_rect = bg_deger.get_rect(right=self.arkaplan_rect.right - 20, centery=self.arkaplan_rect.centery)
+        self.ekran.blit(bg_deger, bg_deger_rect)
+        
+        # Kart 5: Yılan Görünümü
+        yilan_y = arkaplan_y + card_spacing
+        self.yilan_rect = pygame.Rect(self.ekran_genislik // 2 - card_width // 2, yilan_y, card_width, card_height)
+        
+        if self.yilan_rect.collidepoint(mouse_pos):
+            pygame.draw.rect(self.ekran, (40, 50, 70), self.yilan_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (100, 200, 255), self.yilan_rect, 2, border_radius=10)
+        else:
+            pygame.draw.rect(self.ekran, (25, 25, 35), self.yilan_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (70, 70, 90), self.yilan_rect, 1, border_radius=10)
+        
+        ikon_img = self.render_emoji('🐍', 36)
+        self.ekran.blit(ikon_img, (self.yilan_rect.x + 20, self.yilan_rect.y + 10))
+        
+        yilan_text = self.font.render('Yılan Görünümü', True, BEYAZ)
+        self.ekran.blit(yilan_text, (self.yilan_rect.x + 70, self.yilan_rect.y + 8))
+        
+        yilan_deger = self.kucuk_font.render('Renk ve Yüz', True, ACIK_GRI)
+        yilan_deger_rect = yilan_deger.get_rect(right=self.yilan_rect.right - 20, centery=self.yilan_rect.centery)
+        self.ekran.blit(yilan_deger, yilan_deger_rect)
+        
+        # Kart 6: Müzik Seçici
+        muzik_secici_y = yilan_y + card_spacing
+        self.muzik_secici_rect = pygame.Rect(self.ekran_genislik // 2 - card_width // 2, muzik_secici_y, card_width, card_height)
+        
+        if self.muzik_secici_rect.collidepoint(mouse_pos):
+            pygame.draw.rect(self.ekran, (40, 50, 70), self.muzik_secici_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (100, 200, 255), self.muzik_secici_rect, 2, border_radius=10)
+        else:
+            pygame.draw.rect(self.ekran, (25, 25, 35), self.muzik_secici_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (70, 70, 90), self.muzik_secici_rect, 1, border_radius=10)
+        
+        ikon_img = self.render_emoji('🎸', 36)
+        self.ekran.blit(ikon_img, (self.muzik_secici_rect.x + 20, self.muzik_secici_rect.y + 10))
+        
+        muzik_secici_text = self.font.render('Müzik Seçici', True, BEYAZ)
+        self.ekran.blit(muzik_secici_text, (self.muzik_secici_rect.x + 70, self.muzik_secici_rect.y + 8))
+        
+        muzik_secici_deger = self.kucuk_font.render('Özel Müzikler', True, ACIK_GRI)
+        muzik_secici_deger_rect = muzik_secici_deger.get_rect(right=self.muzik_secici_rect.right - 20, centery=self.muzik_secici_rect.centery)
+        self.ekran.blit(muzik_secici_deger, muzik_secici_deger_rect)
+        
+        # Alt bilgi kutusu - scroll offset'e göre konumlandır
+        bilgi_y = 540 + self.ayarlar_scroll_offset
+        bilgi_rect = pygame.Rect(self.ekran_genislik // 2 - 350, bilgi_y, 700, 30)
+        pygame.draw.rect(self.ekran, (20, 20, 30), bilgi_rect, border_radius=6)
+        
+        bilgi_text = self.kucuk_font.render('💡 Kartlara tıklayarak ayarları değiştirin', True, (150, 150, 200))
+        bilgi_text_rect = bilgi_text.get_rect(center=(self.ekran_genislik // 2, bilgi_y + 15))
+        self.ekran.blit(bilgi_text, bilgi_text_rect)
+        
+        # Geri dön - scroll offset'e göre konumlandır
+        geri_y = 580 + self.ayarlar_scroll_offset
+        geri_text = self.kucuk_font.render('ESC - Ana Menü', True, GRI)
+        geri_rect = geri_text.get_rect(center=(self.ekran_genislik // 2, geri_y))
+        self.ekran.blit(geri_text, geri_rect)
+        
+        # Scroll göstergesi (eğer scroll yapılabiliyorsa)
+        if self.ayarlar_scroll_offset < 0:
+            scroll_text = self.kucuk_font.render('▲ Mouse tekerleği ile yukarı kaydır', True, ACIK_GRI)
+            scroll_rect = scroll_text.get_rect(center=(self.ekran_genislik // 2, 50))
+            self.ekran.blit(scroll_text, scroll_rect)
+
+    def grafik_ayarlari_menu_ciz(self, tam_ekran, cozunurluk="1920x1080"):
+        """Grafik ayarları menüsü"""
+        mouse_pos = self.mouse_pozisyonu_al()
+        
+        # Başlık
+        baslik = self.buyuk_font.render('GRAFİK AYARLARI', True, MAVI)
+        self.ekran.blit(baslik, baslik.get_rect(center=(self.ekran_genislik // 2, 50)))
+        
+        # Alt başlık
+        alt_baslik = self.kucuk_font.render('Ekran ve görüntü ayarlarını yapılandırın', True, ACIK_GRI)
+        self.ekran.blit(alt_baslik, alt_baslik.get_rect(center=(self.ekran_genislik // 2, 85)))
+        
+        # Tam ekran/Pencere kartı
+        y_pos = 140
+        card_width, card_height = 680, 55
+        
+        self.tam_ekran_rect = pygame.Rect(self.ekran_genislik // 2 - card_width // 2, y_pos, card_width, card_height)
+        
+        if self.tam_ekran_rect.collidepoint(mouse_pos):
+            pygame.draw.rect(self.ekran, (40, 50, 70), self.tam_ekran_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (100, 200, 255), self.tam_ekran_rect, 2, border_radius=10)
+        else:
+            pygame.draw.rect(self.ekran, (25, 25, 35), self.tam_ekran_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (70, 70, 90), self.tam_ekran_rect, 1, border_radius=10)
+        
+        # İkon
+        ikon = '🖥️' if tam_ekran else '🪟'
+        ikon_img = self.render_emoji(ikon, 36)
+        self.ekran.blit(ikon_img, (self.tam_ekran_rect.x + 20, self.tam_ekran_rect.y + 10))
+        
+        # Başlık
+        ekran_text = self.font.render('Ekran Modu', True, BEYAZ)
+        self.ekran.blit(ekran_text, (self.tam_ekran_rect.x + 70, self.tam_ekran_rect.y + 8))
+        
+        # Durum
+        durum_text = "Tam Ekran" if tam_ekran else "Pencere"
+        durum_renk = YESIL if tam_ekran else TURUNCU
+        durum = self.kucuk_font.render(durum_text, True, durum_renk)
+        durum_rect = durum.get_rect(right=self.tam_ekran_rect.right - 20, centery=self.tam_ekran_rect.centery)
+        self.ekran.blit(durum, durum_rect)
+        
+        # ÇÖZÜNÜRLlÜK SEÇİCİ (sadece pencere modunda)
+        if not tam_ekran:
+            y_pos += 80
+            coz_baslik = self.font.render('Pencere Çözünürlüğü:', True, BEYAZ)
+            self.ekran.blit(coz_baslik, (self.ekran_genislik // 2 - card_width // 2, y_pos - 25))
+            
+            # Çözünürlük seçenekleri
+            cozunurlukler = ["1920x1080", "1600x900", "1280x720"]
+            button_width = 200
+            button_height = 45
+            gap = 15
+            
+            # Rect'leri sakla (olay yönetimi için)
+            self.cozunurluk_rects = {}
+            
+            start_x = self.ekran_genislik // 2 - (len(cozunurlukler) * button_width + (len(cozunurlukler) - 1) * gap) // 2
+            
+            for i, coz in enumerate(cozunurlukler):
+                x = start_x + i * (button_width + gap)
+                rect = pygame.Rect(x, y_pos, button_width, button_height)
+                self.cozunurluk_rects[coz] = rect
+                
+                # Seçili çözünürlüğü vurgula
+                secili = coz == cozunurluk
+                
+                if rect.collidepoint(mouse_pos):
+                    pygame.draw.rect(self.ekran, (40, 50, 70), rect, border_radius=8)
+                    pygame.draw.rect(self.ekran, MAVI if secili else (100, 200, 255), rect, 2, border_radius=8)
+                else:
+                    if secili:
+                        pygame.draw.rect(self.ekran, (30, 80, 120), rect, border_radius=8)
+                        pygame.draw.rect(self.ekran, MAVI, rect, 2, border_radius=8)
+                    else:
+                        pygame.draw.rect(self.ekran, (25, 25, 35), rect, border_radius=8)
+                        pygame.draw.rect(self.ekran, (70, 70, 90), rect, 1, border_radius=8)
+                
+                # Çözünürlük metni
+                text = self.kucuk_font.render(coz, True, BEYAZ if secili else ACIK_GRI)
+                text_rect = text.get_rect(center=rect.center)
+                self.ekran.blit(text, text_rect)
+                
+                # Seçili ise ✓ işareti
+                if secili:
+                    check = self.kucuk_font.render('✓', True, YESIL)
+                    self.ekran.blit(check, (rect.right - 25, rect.y + 5))
+            
+            info_y = y_pos + 85
+        else:
+            self.cozunurluk_rects = {}  # Tam ekranda çözünürlük seçici yok
+            info_y = y_pos + 100
+        
+        # Bilgi mesajı
+        if tam_ekran:
+            info_text = self.kucuk_font.render('Tam ekran modu cihazınızın ekranına göre otomatik ayarlanır', True, ACIK_GRI)
+        else:
+            info_text = self.kucuk_font.render('Pencere boyutunu seçtikten sonra değişiklik uygulanır', True, ACIK_GRI)
+        self.ekran.blit(info_text, info_text.get_rect(center=(self.ekran_genislik // 2, info_y)))
+        
+        # Geri dön
+        geri_text = self.kucuk_font.render('ESC - Ayarlara Dön', True, GRI)
+        self.ekran.blit(geri_text, geri_text.get_rect(center=(self.ekran_genislik // 2, self.ekran_yukseklik - 40)))
+
+    def hiz_ayarlari_menu_ciz(self, hiz_seviyesi):
+        """Hız ayarları alt menüsü - Modern ve görsel tasarım"""
+        mouse_pos = self.mouse_pozisyonu_al()
+        
+        # Başlık
+        baslik = self.buyuk_font.render('OYUN HIZI', True, YESIL)
+        self.ekran.blit(baslik, baslik.get_rect(center=(self.ekran_genislik // 2, 50)))
+        
+        # Alt başlık
+        alt_baslik = self.kucuk_font.render('Yılanın ne kadar hızlı hareket edeceğini seçin', True, ACIK_GRI)
+        self.ekran.blit(alt_baslik, alt_baslik.get_rect(center=(self.ekran_genislik // 2, 85)))
+        
+        # Hız ikonları ve açıklamaları
+        hiz_icons = ['🐌', '🚶', '🏃', '⚡', '🚀']  # Yavaş, Normal, Hızlı, Çok Hızlı, Ultra
+        hiz_aciklamalar = [
+            'Rahat bir tempo',
+            'Dengeli oyun deneyimi',
+            'Heyecan verici tempoda',
+            'Uzmanlar için!',
+            'Aşırı hızlı!'
+        ]
+        hiz_renkler = [
+            (100, 149, 237),  # Cornflower Blue (Yavaş)
+            (60, 179, 113),   # Medium Sea Green (Normal)
+            (255, 165, 0),    # Orange (Hızlı)
+            (220, 20, 60),    # Crimson (Çok Hızlı)
+            (138, 43, 226)    # Blue Violet (Ultra)
+        ]
+        
+        # Grid layout (2x2)
+        self.hiz_secenekleri_rects = []
+        grid_start_x = self.ekran_genislik // 2 - 320
+        grid_start_y = 140
+        card_width = 300
+        card_height = 120
+        spacing = 20
+        
+        for i, isim in enumerate(HIZ_ISIMLERI):
+            # Grid pozisyonu hesapla
+            col = i % 2
+            row = i // 2
+            x = grid_start_x + col * (card_width + spacing)
+            y = grid_start_y + row * (card_height + spacing)
+            
+            # Kart alanı
+            card_rect = pygame.Rect(x, y, card_width, card_height)
+            self.hiz_secenekleri_rects.append((i, card_rect))
+            
+            # Seçili veya hover durumuna göre stil
+            is_selected = i == hiz_seviyesi
+            is_hovered = card_rect.collidepoint(mouse_pos)
+            
+            # Arka plan rengi ve kenarlık
+            if is_selected:
+                # Seçili - parlak ve vurgulu
+                bg_color = tuple(min(c + 40, 255) for c in hiz_renkler[i])
+                border_color = hiz_renkler[i]
+                border_width = 4
+                # Hafif glow efekti
+                glow_rect = card_rect.inflate(8, 8)
+                pygame.draw.rect(self.ekran, border_color, glow_rect, border_radius=15)
+            elif is_hovered:
+                # Hover - hafif aydınlatma
+                bg_color = tuple(max(c - 20, 0) for c in hiz_renkler[i])
+                border_color = tuple(min(c + 30, 255) for c in hiz_renkler[i])
+                border_width = 3
+            else:
+                # Normal - koyu ton
+                bg_color = tuple(max(c - 40, 0) for c in hiz_renkler[i])
+                border_color = tuple(max(c - 20, 0) for c in hiz_renkler[i])
+                border_width = 2
+            
+            # Kart arka planı (gradient efekti için iki katman)
+            pygame.draw.rect(self.ekran, bg_color, card_rect, border_radius=12)
+            pygame.draw.rect(self.ekran, border_color, card_rect, border_width, border_radius=12)
+            
+            # İkon (sol üstte)
+            icon = self.render_emoji(hiz_icons[i], 48)
+            icon_x = x + 25
+            icon_y = y + 25
+            self.ekran.blit(icon, (icon_x, icon_y))
+            
+            # Hız ismi (sağ üstte, büyük)
+            isim_text = self.font.render(isim, True, BEYAZ if is_selected or is_hovered else ACIK_GRI)
+            isim_rect = isim_text.get_rect(left=icon_x + 60, centery=icon_y + 18)
+            self.ekran.blit(isim_text, isim_rect)
+            
+            # FPS bilgisi (küçük, sağ üstte)
+            fps_text = self.kucuk_font.render(f'{HIZ_FPS[i]} FPS', True, 
+                                             YESIL if is_selected else ACIK_GRI)
+            fps_rect = fps_text.get_rect(right=x + card_width - 15, top=y + 15)
+            self.ekran.blit(fps_text, fps_rect)
+            
+            # Açıklama (alt kısımda)
+            aciklama_text = self.kucuk_font.render(hiz_aciklamalar[i], True, 
+                                                   BEYAZ if is_selected else GRI)
+            aciklama_rect = aciklama_text.get_rect(left=x + 25, bottom=y + card_height - 15)
+            self.ekran.blit(aciklama_text, aciklama_rect)
+            
+            # Seçili işareti (sağ alt köşede)
+            if is_selected:
+                check_icon = self.render_emoji('✓', 24)
+                self.ekran.blit(check_icon, (x + card_width - 40, y + card_height - 40))
+        
+        # Talimatlar
+        talimat = self.kucuk_font.render('Ok tuşları veya Fare ile seç', True, ACIK_GRI)
+        self.ekran.blit(talimat, talimat.get_rect(center=(self.ekran_genislik // 2, 480)))
+        
+        # Geri dön
+        geri_text = self.kucuk_font.render('ESC - Ayarlara Dön', True, GRI)
+        self.ekran.blit(geri_text, geri_text.get_rect(center=(self.ekran_genislik // 2, 505)))
+    
+    def _sekme_ciz(self, rect, isim, emoji, aktif, aktif_renk, mouse_pos):
+        """Tek bir sekme çizer"""
+        # Arka plan rengi
+        pygame.draw.rect(
+            self.ekran,
+            aktif_renk if aktif else (60, 60, 80),
+            rect,
+            border_radius=8
+        )
+        # Hover efekti
+        if rect.collidepoint(mouse_pos) and not aktif:
+            pygame.draw.rect(self.ekran, (80, 80, 100), rect, 3, border_radius=8)
+        # Metin
+        text = self.kucuk_font.render(f'{emoji} {isim}', True, BEYAZ)
+        self.ekran.blit(text, text.get_rect(center=rect.center))
+    
+    def _renk_sekmesi_ciz(self, renk_index, mouse_pos):
+        """Renk seçim sekmesini çizer"""
+        y_start, x_start = 150, self.ekran_genislik // 2 - 270
+        col_width, row_height, cols = 180, 50, 3
+        self.renk_rects = []
+        
+        for i, (isim, acik, orta, koyu) in enumerate(YILAN_RENKLERI):
+            row, col = i // cols, i % cols
+            x, y = x_start + col * col_width, y_start + row * row_height
+            buton_rect = pygame.Rect(x - 10, y - 20, 170, 45)
+            self.renk_rects.append((i, buton_rect))
+            
+            # Vurgulama
+            if i == renk_index:
+                pygame.draw.rect(self.ekran, YESIL, buton_rect, 3, border_radius=8)
+            elif buton_rect.collidepoint(mouse_pos):
+                pygame.draw.rect(self.ekran, ACIK_GRI, buton_rect, 2, border_radius=8)
+            
+            # Renk önizlemesi
+            for radius, color in [(16, koyu), (13, orta), (10, acik)]:
+                pygame.draw.circle(self.ekran, color, (x + 20, y), radius)
+            
+            # İsim
+            text = self.kucuk_font.render(
+                f'→ {isim}' if i == renk_index else f'  {isim}',
+                True,
+                YESIL if i == renk_index else BEYAZ
+            )
+            self.ekran.blit(text, text.get_rect(left=x + 45, centery=y))
+    
+    def _yuz_sekmesi_ciz(self, yuz_index, renk_index, mouse_pos):
+        """Yüz seçim sekmesini çizer"""
+        y_start = 150
+        x_left, x_right = self.ekran_genislik // 2 - 180, self.ekran_genislik // 2 + 20
+        row_height = 50
+        self.yuz_rects = []
+        
+        for i, (isim, tip) in enumerate(YILAN_YUZLERI):
+            x = x_left if i < 5 else x_right
+            y = y_start + (i % 5) * row_height
+            buton_rect = pygame.Rect(x - 30, y - 20, 180, 45)
+            self.yuz_rects.append((i, buton_rect))
+            
+            # Vurgulama
+            if i == yuz_index:
+                pygame.draw.rect(self.ekran, TURUNCU, buton_rect, 3, border_radius=8)
+            elif buton_rect.collidepoint(mouse_pos):
+                pygame.draw.rect(self.ekran, ACIK_GRI, buton_rect, 2, border_radius=8)
+            
+            # Kafa çizimi
+            _, acik, orta, koyu = YILAN_RENKLERI[renk_index]
+            for radius, color in [(16, koyu), (13, orta), (10, acik)]:
+                pygame.draw.circle(self.ekran, color, (x, y), radius)
+            self._yuz_ciz(x, y, tip)
+            
+            # İsim
+            text = self.kucuk_font.render(
+                f'→ {isim}' if i == yuz_index else f'  {isim}',
+                True,
+                TURUNCU if i == yuz_index else BEYAZ
+            )
+            self.ekran.blit(text, text.get_rect(left=x + 25, centery=y))
+    
+    def _aksesuar_ikonu_ciz(self, tip, icon_x, icon_y):
+        """Aksesuar ikonunu çizer"""
+        icon_map = {
+            "gozluk": lambda: [
+                pygame.draw.circle(self.ekran, (50, 50, 50), (icon_x - 5, icon_y), 6, 2),
+                pygame.draw.circle(self.ekran, (50, 50, 50), (icon_x + 5, icon_y), 6, 2),
+                pygame.draw.line(self.ekran, (50, 50, 50), (icon_x - 5, icon_y), (icon_x + 5, icon_y), 2)
+            ],
+            "gunes_gozluk": lambda: [
+                pygame.draw.circle(self.ekran, (30, 30, 30), (icon_x - 5, icon_y), 6),
+                pygame.draw.circle(self.ekran, (30, 30, 30), (icon_x + 5, icon_y), 6)
+            ],
+            "sapka": lambda: [
+                pygame.draw.rect(self.ekran, (139, 69, 19), (icon_x - 8, icon_y - 8, 16, 5)),
+                pygame.draw.circle(self.ekran, (139, 69, 19), (icon_x, icon_y - 3), 8)
+            ],
+            "tac": lambda: [
+                pygame.draw.polygon(self.ekran, (255, 215, 0), [
+                    (icon_x - 8, icon_y), (icon_x - 5, icon_y - 8), (icon_x, icon_y - 4),
+                    (icon_x + 5, icon_y - 8), (icon_x + 8, icon_y)
+                ])
+            ],
+            "bandana": lambda: [pygame.draw.rect(self.ekran, KIRMIZI, (icon_x - 10, icon_y - 4, 20, 4))],
+            "papyon": lambda: [
+                pygame.draw.polygon(self.ekran, KIRMIZI, [(icon_x - 8, icon_y - 3), (icon_x - 3, icon_y), (icon_x - 8, icon_y + 3)]),
+                pygame.draw.polygon(self.ekran, KIRMIZI, [(icon_x + 8, icon_y - 3), (icon_x + 3, icon_y), (icon_x + 8, icon_y + 3)])
+            ],
+            "saat": lambda: [
+                pygame.draw.circle(self.ekran, (192, 192, 192), (icon_x, icon_y), 7, 2),
+                pygame.draw.line(self.ekran, (192, 192, 192), (icon_x, icon_y), (icon_x + 3, icon_y - 3), 2)
+            ],
+            "kupe": lambda: [
+                pygame.draw.circle(self.ekran, (255, 215, 0), (icon_x, icon_y), 5, 2),
+                pygame.draw.circle(self.ekran, (255, 215, 0), (icon_x, icon_y + 5), 3)
+            ],
+            "zincir": lambda: [pygame.draw.circle(self.ekran, (192, 192, 192), (icon_x + o, icon_y), 2) for o in range(-6, 7, 4)]
+        }
+        if tip in icon_map:
+            icon_map[tip]()
+    
+    def _aksesuar_sekmesi_ciz(self, aksesuar_index, mouse_pos):
+        """Aksesuar seçim sekmesini çizer"""
+        from constants import YILAN_AKSESUARLARI
+        y_start = 150
+        x_left, x_right = self.ekran_genislik // 2 - 180, self.ekran_genislik // 2 + 20
+        row_height = 50
+        self.aksesuar_rects = []
+        
+        for i, (isim, tip) in enumerate(YILAN_AKSESUARLARI):
+            x = x_left if i < 5 else x_right
+            y = y_start + (i % 5) * row_height
+            buton_rect = pygame.Rect(x - 10, y - 20, 180, 45)
+            self.aksesuar_rects.append((i, buton_rect))
+            
+            # Vurgulama
+            if i == aksesuar_index:
+                pygame.draw.rect(self.ekran, (255, 215, 0), buton_rect, 3, border_radius=8)
+            elif buton_rect.collidepoint(mouse_pos):
+                pygame.draw.rect(self.ekran, ACIK_GRI, buton_rect, 2, border_radius=8)
+            
+            # İkon çiz
+            if tip != "yok":
+                self._aksesuar_ikonu_ciz(tip, x + 15, y)
+            
+            # İsim
+            text = self.kucuk_font.render(
+                f'→ {isim}' if i == aksesuar_index else f'  {isim}',
+                True,
+                (255, 215, 0) if i == aksesuar_index else BEYAZ
+            )
+            self.ekran.blit(text, text.get_rect(left=x + 40, centery=y))
+    
+    def yilan_ozellestirme_menu_ciz(self, renk_index, yuz_index, aksesuar_index=0, hangi_secim="RENK"):
+        """Yılan özelleştirme menüsü - renk, yüz ve aksesuar seçimi"""
+        mouse_pos = self.mouse_pozisyonu_al()
+        
+        # Başlık
+        baslik = self.buyuk_font.render('YILAN GÖRÜNÜMÜ', True, YESIL)
+        self.ekran.blit(baslik, baslik.get_rect(center=(self.ekran_genislik // 2, 50)))
+        
+        # Sekmeler
+        tab_y, tab_width, tab_height, tab_spacing = 90, 150, 35, 10
+        tabs_start_x = self.ekran_genislik // 2 - (tab_width * 3 + tab_spacing * 2) // 2
+        
+        # Sekmeleri çiz
+        renk_tab_rect = pygame.Rect(tabs_start_x, tab_y, tab_width, tab_height)
+        yuz_tab_rect = pygame.Rect(tabs_start_x + tab_width + tab_spacing, tab_y, tab_width, tab_height)
+        aksesuar_tab_rect = pygame.Rect(tabs_start_x + (tab_width + tab_spacing) * 2, tab_y, tab_width, tab_height)
+        
+        self._sekme_ciz(renk_tab_rect, 'Renk', '🎨', hangi_secim == "RENK", YESIL, mouse_pos)
+        self._sekme_ciz(yuz_tab_rect, 'Yüz', '😊', hangi_secim == "YUZ", TURUNCU, mouse_pos)
+        self._sekme_ciz(aksesuar_tab_rect, 'Aksesuar', '👓', hangi_secim == "AKSESUAR", (255, 215, 0), mouse_pos)
+        
+        # Sekme rectlerini sakla
+        self.renk_tab_rect = renk_tab_rect
+        self.yuz_tab_rect = yuz_tab_rect
+        self.aksesuar_tab_rect = aksesuar_tab_rect
+        
+        # İçerik çiz
+        if hangi_secim == "RENK":
+            self._renk_sekmesi_ciz(renk_index, mouse_pos)
+        elif hangi_secim == "YUZ":
+            self._yuz_sekmesi_ciz(yuz_index, renk_index, mouse_pos)
+        else:
+            self._aksesuar_sekmesi_ciz(aksesuar_index, mouse_pos)
+        
+        # Talimatlar ve geri buton
+        talimat = self.kucuk_font.render('Fare ile seç veya Ok tuşları | TAB: Sonraki sekme', True, ACIK_GRI)
+        self.ekran.blit(talimat, talimat.get_rect(center=(self.ekran_genislik // 2, 480)))
+        
+        geri_text = self.kucuk_font.render('ESC - Ayarlara Dön', True, GRI)
+        self.ekran.blit(geri_text, geri_text.get_rect(center=(self.ekran_genislik // 2, 505)))
+        
+    
+    def _yuz_ciz(self, x, y, tip):
+        """Yüz çizme yardımcı fonksiyonu"""
+        goz1_x, goz1_y = x - 5, y - 3
+        goz2_x, goz2_y = x + 5, y - 3
+        
+        if tip == "normal":
+            pygame.draw.circle(self.ekran, BEYAZ, (goz1_x, goz1_y), 4)
+            pygame.draw.circle(self.ekran, BEYAZ, (goz2_x, goz2_y), 4)
+            pygame.draw.circle(self.ekran, SIYAH, (goz1_x, goz1_y), 2)
+            pygame.draw.circle(self.ekran, SIYAH, (goz2_x, goz2_y), 2)
+        elif tip == "mutlu":
+            pygame.draw.arc(self.ekran, SIYAH, (goz1_x - 3, goz1_y - 3, 6, 6), 0, 3.14, 2)
+            pygame.draw.arc(self.ekran, SIYAH, (goz2_x - 3, goz2_y - 3, 6, 6), 0, 3.14, 2)
+            # Gülümseme
+            pygame.draw.arc(self.ekran, SIYAH, (x - 5, y + 2, 10, 6), 3.14, 6.28, 2)
+        elif tip == "saskın":
+            pygame.draw.circle(self.ekran, BEYAZ, (goz1_x, goz1_y), 5)
+            pygame.draw.circle(self.ekran, BEYAZ, (goz2_x, goz2_y), 5)
+            pygame.draw.circle(self.ekran, SIYAH, (goz1_x, goz1_y), 3)
+            pygame.draw.circle(self.ekran, SIYAH, (goz2_x, goz2_y), 3)
+        elif tip == "sinirli":
+            pygame.draw.circle(self.ekran, BEYAZ, (goz1_x, goz1_y), 4)
+            pygame.draw.circle(self.ekran, BEYAZ, (goz2_x, goz2_y), 4)
+            pygame.draw.circle(self.ekran, KIRMIZI, (goz1_x, goz1_y), 2)
+            pygame.draw.circle(self.ekran, KIRMIZI, (goz2_x, goz2_y), 2)
+            # Kaşlar
+            pygame.draw.line(self.ekran, KIRMIZI, (goz1_x - 3, goz1_y - 4), (goz1_x + 3, goz1_y - 5), 2)
+            pygame.draw.line(self.ekran, KIRMIZI, (goz2_x - 3, goz2_y - 5), (goz2_x + 3, goz2_y - 4), 2)
+        elif tip == "havali":
+            # Güneş gözlüğü
+            pygame.draw.circle(self.ekran, (30, 30, 30), (goz1_x, goz1_y), 4)
+            pygame.draw.circle(self.ekran, (30, 30, 30), (goz2_x, goz2_y), 4)
+        elif tip == "uyuyan":
+            # Kapalı gözler
+            pygame.draw.line(self.ekran, SIYAH, (goz1_x - 3, goz1_y), (goz1_x + 3, goz1_y), 2)
+            pygame.draw.line(self.ekran, SIYAH, (goz2_x - 3, goz2_y), (goz2_x + 3, goz2_y), 2)
+            # Z simgesi
+            pygame.draw.line(self.ekran, (100, 100, 255), (x + 8, y - 8), (x + 12, y - 8), 2)
+            pygame.draw.line(self.ekran, (100, 100, 255), (x + 12, y - 8), (x + 8, y - 4), 2)
+            pygame.draw.line(self.ekran, (100, 100, 255), (x + 8, y - 4), (x + 12, y - 4), 2)
+        elif tip == "asik":
+            # Kalp gözler
+            pygame.draw.circle(self.ekran, (255, 20, 147), (goz1_x - 1, goz1_y - 1), 3)
+            pygame.draw.circle(self.ekran, (255, 20, 147), (goz1_x + 1, goz1_y - 1), 3)
+            pygame.draw.circle(self.ekran, (255, 20, 147), (goz2_x - 1, goz2_y - 1), 3)
+            pygame.draw.circle(self.ekran, (255, 20, 147), (goz2_x + 1, goz2_y - 1), 3)
+        elif tip == "deli":
+            # Spiral gözler
+            pygame.draw.circle(self.ekran, BEYAZ, (goz1_x, goz1_y), 4)
+            pygame.draw.circle(self.ekran, BEYAZ, (goz2_x, goz2_y), 4)
+            pygame.draw.circle(self.ekran, SIYAH, (goz1_x, goz1_y), 3, 1)
+            pygame.draw.circle(self.ekran, SIYAH, (goz2_x, goz2_y), 3, 1)
+            pygame.draw.circle(self.ekran, SIYAH, (goz1_x, goz1_y), 1)
+            pygame.draw.circle(self.ekran, SIYAH, (goz2_x, goz2_y), 1)
+        elif tip == "robot":
+            # Kare gözler
+            pygame.draw.rect(self.ekran, (0, 255, 255), (goz1_x - 3, goz1_y - 3, 6, 6))
+            pygame.draw.rect(self.ekran, (0, 255, 255), (goz2_x - 3, goz2_y - 3, 6, 6))
+            pygame.draw.circle(self.ekran, (0, 150, 150), (goz1_x, goz1_y), 2)
+            pygame.draw.circle(self.ekran, (0, 150, 150), (goz2_x, goz2_y), 2)
+        elif tip == "pirat":
+            # Normal göz + göz bandı
+            pygame.draw.circle(self.ekran, BEYAZ, (goz1_x, goz1_y), 4)
+            pygame.draw.circle(self.ekran, SIYAH, (goz1_x, goz1_y), 2)
+            # Göz bandı
+            pygame.draw.circle(self.ekran, SIYAH, (goz2_x, goz2_y), 5)
+            pygame.draw.line(self.ekran, SIYAH, (x - 10, y - 3), (x + 10, y - 3), 3)
+    
+    def arkaplan_ayarlari_menu_ciz(self, menu_arkaplan, oyun_arkaplan, menu_secili_index=0, oyun_secili_index=0, hangi_menu="MENU"):
+        """Arka plan ayarları alt menüsü - Modern sekme tasarımı"""
+        mouse_pos = self.mouse_pozisyonu_al()
+        
+        # Başlık
+        baslik = self.buyuk_font.render('ARKA PLAN AYARLARI', True, TURUNCU)
+        self.ekran.blit(baslik, baslik.get_rect(center=(self.ekran_genislik // 2, 40)))
+        
+        # Alt başlık
+        alt_baslik = self.kucuk_font.render('Menü ve oyun için arka plan seçin', True, ACIK_GRI)
+        self.ekran.blit(alt_baslik, alt_baslik.get_rect(center=(self.ekran_genislik // 2, 70)))
+        
+        # Sekmeler
+        tab_y, tab_width, tab_height = 100, 200, 40
+        tab_spacing = 20
+        tabs_start_x = self.ekran_genislik // 2 - (tab_width + tab_spacing // 2)
+        
+        menu_tab_rect = pygame.Rect(tabs_start_x, tab_y, tab_width, tab_height)
+        oyun_tab_rect = pygame.Rect(tabs_start_x + tab_width + tab_spacing, tab_y, tab_width, tab_height)
+        
+        # Sekmeleri çiz
+        self._sekme_ciz(menu_tab_rect, 'Ana Menü', '🖼️', hangi_menu == "MENU", (100, 149, 237), mouse_pos)
+        self._sekme_ciz(oyun_tab_rect, 'Oyun İçi', '🎮', hangi_menu == "OYUN", (60, 179, 113), mouse_pos)
+        
+        # Sekme rectlerini sakla (mouse için)
+        self.menu_bg_tab_rect = menu_tab_rect
+        self.oyun_bg_tab_rect = oyun_tab_rect
+        
+        # Dosyaları al
+        dosyalar = self.arkaplan_dosyalari_getir()
+        secili_index = menu_secili_index if hangi_menu == "MENU" else oyun_secili_index
+        
+        # İçerik alanı - ölçeklendirilmiş
+        scale_factor = self.ekran_genislik / 1600.0
+        scale_factor = max(1.0, min(2.5, scale_factor))
+        
+        content_y = int(160 * scale_factor)
+        
+        # Varsayılan gradient seçeneği (özel kart) - ortalanmış
+        card_width = int(600 * scale_factor)
+        card_height = int(70 * scale_factor)
+        default_rect = pygame.Rect(self.ekran_genislik // 2 - card_width // 2, content_y, card_width, card_height)
+        is_default_selected = secili_index == -1
+        
+        # Varsayılan kart arka planı
+        if is_default_selected:
+            bg_color = (40, 80, 40)
+            border_color = YESIL
+            border_width = 4
+        elif default_rect.collidepoint(mouse_pos):
+            bg_color = (30, 60, 30)
+            border_color = (100, 255, 100)
+            border_width = 2
+        else:
+            bg_color = (30, 30, 50)
+            border_color = (80, 80, 100)
+            border_width = 2
+        
+        pygame.draw.rect(self.ekran, bg_color, default_rect, border_radius=10)
+        pygame.draw.rect(self.ekran, border_color, default_rect, border_width, border_radius=10)
+        
+        # Gradient önizleme (mini) - ölçeklendirilmiş
+        preview_width = int(80 * scale_factor)
+        preview_height = int(50 * scale_factor)
+        preview_rect = pygame.Rect(default_rect.x + int(15 * scale_factor), 
+                                   default_rect.y + (card_height - preview_height) // 2, 
+                                   preview_width, preview_height)
+        for i in range(preview_height):
+            c = int(20 + (i / preview_height) * 20)
+            pygame.draw.line(self.ekran, (c, c, c + 40), 
+                           (preview_rect.x, preview_rect.y + i), 
+                           (preview_rect.right, preview_rect.y + i))
+        pygame.draw.rect(self.ekran, border_color, preview_rect, 1, border_radius=5)
+        
+        # Varsayılan metin - ölçeklendirilmiş font
+        orta_font_size = int(36 * scale_factor)
+        try:
+            orta_font = pygame.font.SysFont('Helvetica Neue', orta_font_size)
+        except:
+            orta_font = pygame.font.SysFont('arial', orta_font_size)
+            
+        default_text = orta_font.render('Varsayılan Gradient', True, 
+                                       YESIL if is_default_selected else BEYAZ)
+        self.ekran.blit(default_text, default_text.get_rect(left=preview_rect.right + int(20 * scale_factor), 
+                                                             centery=default_rect.centery))
+        
+        # Seçili işareti
+        if is_default_selected:
+            check = self.render_emoji('✓', int(30 * scale_factor))
+            self.ekran.blit(check, (default_rect.right - int(50 * scale_factor), 
+                                   default_rect.centery - int(15 * scale_factor)))
+        
+        # Rect listesi
+        self.arkaplan_rects = [(-1, default_rect)]
+        
+        # Dosya listesi başlığı
+        if len(dosyalar) > 0:
+            kucuk_font_size = int(24 * scale_factor)
+            try:
+                kucuk_font = pygame.font.SysFont('Helvetica Neue', kucuk_font_size)
+            except:
+                kucuk_font = pygame.font.SysFont('arial', kucuk_font_size)
+                
+            files_label = kucuk_font.render('Özel Arka Planlar:', True, ACIK_GRI)
+            files_y = content_y + card_height + int(30 * scale_factor)
+            self.ekran.blit(files_label, (self.ekran_genislik // 2 - card_width // 2, files_y))
+            
+            # Dosyalar - Grid layout (3 sütun) - ölçeklendirilmiş ve ortalanmış
+            grid_start_y = files_y + int(40 * scale_factor)
+            file_card_width = int(240 * scale_factor)
+            file_card_height = int(60 * scale_factor)
+            spacing = int(20 * scale_factor)
+            cols = 3
+            max_gosterim = 6
+            
+            # Grid'in toplam genişliğini hesapla
+            total_grid_width = cols * file_card_width + (cols - 1) * spacing
+            grid_start_x = self.ekran_genislik // 2 - total_grid_width // 2
+            
+            for i, dosya in enumerate(dosyalar[:max_gosterim]):
+                row = i // cols
+                col = i % cols
+                x = grid_start_x + col * (file_card_width + spacing)
+                y = grid_start_y + row * (file_card_height + spacing)
+                
+                file_rect = pygame.Rect(x, y, file_card_width, file_card_height)
+                self.arkaplan_rects.append((i, file_rect))
+                
+                is_selected = i == secili_index
+                is_hovered = file_rect.collidepoint(mouse_pos)
+                
+                # Kart arka planı
+                if is_selected:
+                    bg_color = (40, 80, 40)
+                    border_color = YESIL
+                    border_width = 3
+                elif is_hovered:
+                    bg_color = (30, 60, 30)
+                    border_color = (100, 255, 100)
+                    border_width = 2
+                else:
+                    bg_color = (30, 30, 50)
+                    border_color = (80, 80, 100)
+                    border_width = 1
+                
+                pygame.draw.rect(self.ekran, bg_color, file_rect, border_radius=8)
+                pygame.draw.rect(self.ekran, border_color, file_rect, border_width, border_radius=8)
+                
+                # Dosya ikonu
+                icon_size = int(28 * scale_factor)
+                icon = self.render_emoji('🖼️', icon_size)
+                self.ekran.blit(icon, (x + int(15 * scale_factor), y + (file_card_height - icon_size) // 2))
+                
+                # Dosya ismi (kısaltılmış)
+                dosya_ismi = dosya if len(dosya) <= 18 else dosya[:15] + '...'
+                file_text = kucuk_font.render(dosya_ismi, True, 
+                                                   YESIL if is_selected else BEYAZ)
+                self.ekran.blit(file_text, file_text.get_rect(left=x + int(50 * scale_factor), 
+                                                               centery=y + file_card_height // 2))
+                
+                # Seçili işareti
+                if is_selected:
+                    check_size = int(24 * scale_factor)
+                    check = self.render_emoji('✓', check_size)
+                    self.ekran.blit(check, (x + file_card_width - int(35 * scale_factor), 
+                                           y + (file_card_height - check_size) // 2))
+            
+            # Daha fazla dosya varsa bilgi
+            if len(dosyalar) > max_gosterim:
+                more_text = kucuk_font.render(f'+{len(dosyalar) - max_gosterim} daha...', True, GRI)
+                more_y = grid_start_y + 2 * (file_card_height + spacing) + int(10 * scale_factor)
+                self.ekran.blit(more_text, (grid_start_x, more_y))
+        else:
+            # Dosya yoksa bilgi - ortalanmış
+            info_card_width = int(500 * scale_factor)
+            info_card_height = int(100 * scale_factor)
+            info_y = content_y + card_height + int(50 * scale_factor)
+            no_files_rect = pygame.Rect(self.ekran_genislik // 2 - info_card_width // 2, 
+                                        info_y, 
+                                        info_card_width, 
+                                        info_card_height)
+            pygame.draw.rect(self.ekran, (40, 40, 60), no_files_rect, border_radius=10)
+            pygame.draw.rect(self.ekran, (80, 80, 120), no_files_rect, 2, border_radius=10)
+            
+            icon_size = int(48 * scale_factor)
+            info_icon = self.render_emoji('📁', icon_size)
+            self.ekran.blit(info_icon, (self.ekran_genislik // 2 - icon_size // 2, 
+                                       info_y + int(15 * scale_factor)))
+            
+            kucuk_font_size = int(24 * scale_factor)
+            try:
+                kucuk_font = pygame.font.SysFont('Helvetica Neue', kucuk_font_size)
+            except:
+                kucuk_font = pygame.font.SysFont('arial', kucuk_font_size)
+                
+            info_text = kucuk_font.render('backgrounds/ klasörüne resim ekleyin', True, ACIK_GRI)
+            self.ekran.blit(info_text, info_text.get_rect(center=(self.ekran_genislik // 2, 
+                                                                   info_y + info_card_height - int(25 * scale_factor))))
+        
+        # Talimatlar - ölçeklendirilmiş ve ortalanmış
+        talimat_y = self.ekran_yukseklik - int(120 * scale_factor)
+        
+        kucuk_font_size = int(24 * scale_factor)
+        try:
+            kucuk_font = pygame.font.SysFont('Helvetica Neue', kucuk_font_size)
+        except:
+            kucuk_font = pygame.font.SysFont('arial', kucuk_font_size)
+        
+        if hangi_menu == "MENU":
+            switch_text = kucuk_font.render('TAB: Oyun Arka Planı', True, TURUNCU)
+        else:
+            switch_text = kucuk_font.render('TAB: Menü Arka Planı', True, TURUNCU)
+        self.ekran.blit(switch_text, switch_text.get_rect(center=(self.ekran_genislik // 2, talimat_y)))
+        
+        control_text = kucuk_font.render('⬆️ Ok tuşları veya Fare ile seç', True, ACIK_GRI)
+        self.ekran.blit(control_text, control_text.get_rect(center=(self.ekran_genislik // 2, 
+                                                                     talimat_y + int(30 * scale_factor))))
+        
+        # Geri dön
+        geri_text = kucuk_font.render('ESC - Ayarlara Dön', True, GRI)
+        self.ekran.blit(geri_text, geri_text.get_rect(center=(self.ekran_genislik // 2, 
+                                                               talimat_y + int(60 * scale_factor))))
+
+    def oyun_bitti_ekrani(self, skor, en_yuksek_skor, yeni_basarimlar=None):
+        """Oyun bitti ekranını çizer - ORTALANMIŞ ve ÖLÇEKLENDIRILMIŞ"""
+        # Arka plan game.py'de çizildiği için burada fill yapmıyoruz
+        
+        # Ölçeklendirme faktörü
+        scale_factor = self.ekran_genislik / 1600.0
+        scale_factor = max(1.0, min(2.5, scale_factor))
+        
+        # Dinamik fontlar
+        buyuk_font_size = int(90 * scale_factor)
+        orta_font_size = int(48 * scale_factor)
+        kucuk_font_size = int(28 * scale_factor)
+        
+        try:
+            buyuk_font = pygame.font.SysFont('Helvetica Neue', buyuk_font_size)
+            orta_font = pygame.font.SysFont('Helvetica Neue', orta_font_size)
+            kucuk_font = pygame.font.SysFont('Helvetica Neue', kucuk_font_size)
+        except:
+            buyuk_font = pygame.font.SysFont('arial', buyuk_font_size)
+            orta_font = pygame.font.SysFont('arial', orta_font_size)
+            kucuk_font = pygame.font.SysFont('arial', kucuk_font_size)
+        
+        # Oyun bitti metni - daha yukarıda
+        bitti_y = int(150 * scale_factor)
+        bitti_metni = buyuk_font.render('OYUN BİTTİ!', True, KIRMIZI)
+        bitti_rect = bitti_metni.get_rect(center=(self.ekran_genislik // 2, bitti_y))
+        self.ekran.blit(bitti_metni, bitti_rect)
+        
+        # Skor - arka planlı
+        skor_y = int(280 * scale_factor)
+        skor_bg_rect = pygame.Rect(self.ekran_genislik // 2 - int(250 * scale_factor), 
+                                    skor_y - int(35 * scale_factor), 
+                                    int(500 * scale_factor), 
+                                    int(70 * scale_factor))
+        pygame.draw.rect(self.ekran, (20, 20, 30, 220), skor_bg_rect, border_radius=15)
+        pygame.draw.rect(self.ekran, (100, 200, 255), skor_bg_rect, 3, border_radius=15)
+        
+        skor_metni = orta_font.render(f'Skorunuz: {skor}', True, BEYAZ)
+        skor_rect = skor_metni.get_rect(center=(self.ekran_genislik // 2, skor_y))
+        self.ekran.blit(skor_metni, skor_rect)
+        
+        # Yeni rekor mu?
+        if skor == en_yuksek_skor and skor > 0:
+            rekor_y = int(360 * scale_factor)
+            rekor_metni = orta_font.render('🎉 YENİ REKOR! 🎉', True, TURUNCU)
+            rekor_rect = rekor_metni.get_rect(center=(self.ekran_genislik // 2, rekor_y))
+            self.ekran.blit(rekor_metni, rekor_rect)
+        
+        # Yeni başarımlar varsa göster
+        basarim_y_start = int(400 * scale_factor)
+        if yeni_basarimlar and len(yeni_basarimlar) > 0:
+            basarim_baslik = orta_font.render('✨ YENI BASARIM! ✨', True, (255, 215, 0))
+            basarim_baslik_rect = basarim_baslik.get_rect(center=(self.ekran_genislik // 2, basarim_y_start))
+            self.ekran.blit(basarim_baslik, basarim_baslik_rect)
+            
+            # İlk 3 başarımı göster
+            from constants import BASARIMLAR
+            for i, basarim_adi in enumerate(yeni_basarimlar[:3]):
+                if basarim_adi in BASARIMLAR:
+                    basarim_text = kucuk_font.render(
+                        f'+ {BASARIMLAR[basarim_adi]["isim"]}',
+                        True,
+                        YESIL
+                    )
+                    basarim_text_rect = basarim_text.get_rect(
+                        center=(self.ekran_genislik // 2, basarim_y_start + int((40 + i * 30) * scale_factor))
+                    )
+                    self.ekran.blit(basarim_text, basarim_text_rect)
+        
+        # Seçenekler - daha aşağıda, arka planlı
+        secenekler_y = self.ekran_yukseklik - int(150 * scale_factor)
+        
+        yeniden_metni = kucuk_font.render('Yeniden oynamak için SPACE', True, BEYAZ)
+        yeniden_rect = yeniden_metni.get_rect(center=(self.ekran_genislik // 2, secenekler_y))
+        self.ekran.blit(yeniden_metni, yeniden_rect)
+        
+        menu_metni = kucuk_font.render('Ana menü için M', True, BEYAZ)
+        menu_rect = menu_metni.get_rect(center=(self.ekran_genislik // 2, secenekler_y + int(40 * scale_factor)))
+        self.ekran.blit(menu_metni, menu_rect)
+        
+        cikis_metni = kucuk_font.render('Çıkmak için ESC', True, GRI)
+        cikis_rect = cikis_metni.get_rect(center=(self.ekran_genislik // 2, secenekler_y + int(75 * scale_factor)))
+        self.ekran.blit(cikis_metni, cikis_rect)
+
+    def skor_goster(self, skor, en_yuksek_skor):
+        """Oyun sırasında skoru gösterir - ARKA PLANLI"""
+        # Arka plan kutusu
+        skor_bg_rect = pygame.Rect(5, 5, 250, 70)
+        pygame.draw.rect(self.ekran, (20, 20, 30, 200), skor_bg_rect, border_radius=10)
+        pygame.draw.rect(self.ekran, (50, 200, 100), skor_bg_rect, 2, border_radius=10)
+        
+        skor_metni = self.font.render(f'Skor: {skor}', True, BEYAZ)
+        self.ekran.blit(skor_metni, (15, 12))
+        
+        # En yüksek skoru da göster
+        if en_yuksek_skor > 0:
+            en_yuksek = self.kucuk_font.render(f'En Yüksek: {en_yuksek_skor}', True, TURUNCU)
+            self.ekran.blit(en_yuksek, (15, 45))
+    
+    def pvp_skorlar_goster(self, skor1, skor2, isim1="Oyuncu 1", isim2="Oyuncu 2", p1_kalkan=False, p2_kalkan=False, p1_hiz=0, p2_hiz=0):
+        """PVP modunda iki oyuncunun skorlarını ve yeteneklerini gösterir - ARKA PLANLI"""
+        # Oyuncu 1 (Mavi) - sol üstte ARKA PLAN
+        p1_bg_height = 35
+        if p1_kalkan:
+            p1_bg_height += 30
+        if p1_hiz > 0:
+            p1_bg_height += 30
+        
+        p1_bg_rect = pygame.Rect(5, 5, 280, p1_bg_height)
+        pygame.draw.rect(self.ekran, (20, 30, 50, 200), p1_bg_rect, border_radius=10)
+        pygame.draw.rect(self.ekran, (100, 150, 255), p1_bg_rect, 2, border_radius=10)
+        
+        p1_text = self.font.render(f'{isim1}: {skor1}', True, (100, 150, 255))
+        self.ekran.blit(p1_text, (15, 10))
+        
+        # Oyuncu 1 yetenekler (skorun altında)
+        y_offset = 40
+        if p1_kalkan:
+            kalkan_icon = self.kucuk_font.render('🛡️ KALKAN', True, (150, 255, 150))
+            self.ekran.blit(kalkan_icon, (15, y_offset))
+            y_offset += 25
+        if p1_hiz > 0:
+            hiz_text = self.kucuk_font.render(f'⚡ HIZ: {p1_hiz:.1f}s', True, (255, 255, 100))
+            self.ekran.blit(hiz_text, (15, y_offset))
+        
+        # Oyuncu 2 (Kırmızı) - sağ üstte ARKA PLAN
+        p2_bg_height = 35
+        if p2_kalkan:
+            p2_bg_height += 30
+        if p2_hiz > 0:
+            p2_bg_height += 30
+        
+        ekran_genislik = self.ekran.get_width()
+        p2_bg_rect = pygame.Rect(ekran_genislik - 285, 5, 280, p2_bg_height)
+        pygame.draw.rect(self.ekran, (50, 20, 20, 200), p2_bg_rect, border_radius=10)
+        pygame.draw.rect(self.ekran, (255, 100, 100), p2_bg_rect, 2, border_radius=10)
+        
+        p2_text = self.font.render(f'{isim2}: {skor2}', True, (255, 100, 100))
+        p2_rect = p2_text.get_rect(topright=(ekran_genislik - 15, 10))
+        self.ekran.blit(p2_text, p2_rect)
+        
+        # Oyuncu 2 yetenekler (skorun altında, sağa hizalı)
+        y_offset = 40
+        if p2_kalkan:
+            kalkan_icon = self.kucuk_font.render('KALKAN 🛡️', True, (150, 255, 150))
+            kalkan_rect = kalkan_icon.get_rect(topright=(ekran_genislik - 15, y_offset))
+            self.ekran.blit(kalkan_icon, kalkan_rect)
+            y_offset += 25
+        if p2_hiz > 0:
+            hiz_text = self.kucuk_font.render(f'{p2_hiz:.1f}s :HIZ ⚡', True, (255, 255, 100))
+            hiz_rect = hiz_text.get_rect(topright=(ekran_genislik - 15, y_offset))
+            self.ekran.blit(hiz_text, hiz_rect)
+    
+    def pvp_oyun_bitti_ekrani(self, skor1, skor2, kazanan, isim1="Oyuncu 1", isim2="Oyuncu 2"):
+        """PVP modu için oyun bitti ekranı"""
+        # Başlık
+        baslik = self.buyuk_font.render('OYUN BİTTİ', True, KIRMIZI)
+        baslik_rect = baslik.get_rect(center=(self.ekran_genislik // 2, 150))
+        self.ekran.blit(baslik, baslik_rect)
+        
+        # Kazanan - isimleri kullan
+        if kazanan is None or kazanan == "":
+            # Kazanan belirlenmemişse varsayılan
+            kazanan_renk = (200, 200, 200)
+            kazanan_text = self.font.render('OYUN BİTTİ!', True, kazanan_renk)
+        elif kazanan == "Berabere":
+            kazanan_renk = (255, 215, 0)
+            kazanan_text = self.font.render('BERABERE!', True, kazanan_renk)
+        elif kazanan == isim1:
+            # Oyuncu 1 kazandı (isimle karşılaştır)
+            kazanan_renk = (100, 150, 255)
+            kazanan_text = self.font.render(f'{isim1} KAZANDI!', True, kazanan_renk)
+        elif kazanan == isim2:
+            # Oyuncu 2 kazandı (isimle karşılaştır)
+            if "Bot" in isim2:
+                kazanan_renk = (255, 140, 0)  # Turuncu
+            else:
+                kazanan_renk = (255, 100, 100)  # Kırmızı
+            kazanan_text = self.font.render(f'{isim2} KAZANDI!', True, kazanan_renk)
+        else:
+            # Eski format kontrolleri (geriye dönük uyumluluk)
+            if "Oyuncu 1" in kazanan or "Mavi" in kazanan or ("Oyuncu" in kazanan and "Sen" in kazanan):
+                kazanan_renk = (100, 150, 255)
+                kazanan_text = self.font.render(f'{isim1} KAZANDI!', True, kazanan_renk)
+            else:
+                if "Bot" in isim2:
+                    kazanan_renk = (255, 140, 0)  # Turuncu
+                else:
+                    kazanan_renk = (255, 100, 100)  # Kırmızı
+                kazanan_text = self.font.render(f'{isim2} KAZANDI!', True, kazanan_renk)
+        
+        kazanan_rect = kazanan_text.get_rect(center=(self.ekran_genislik // 2, 220))
+        self.ekran.blit(kazanan_text, kazanan_rect)
+        
+        # Skorlar - isimleri kullan
+        p1_skor = self.font.render(f'{isim1} (Mavi): {skor1}', True, (100, 150, 255))
+        p1_rect = p1_skor.get_rect(center=(self.ekran_genislik // 2, 290))
+        self.ekran.blit(p1_skor, p1_rect)
+        
+        # İkinci oyuncu için renk belirle
+        if "Bot" in isim2:
+            p2_renk = (255, 140, 0)  # Turuncu (bot)
+            p2_skor_text = f'{isim2} (Turuncu): {skor2}'
+        else:
+            p2_renk = (255, 100, 100)  # Kırmızı (PVP)
+            p2_skor_text = f'{isim2} (Kirmizi): {skor2}'
+        
+        p2_skor = self.font.render(p2_skor_text, True, p2_renk)
+        p2_rect = p2_skor.get_rect(center=(self.ekran_genislik // 2, 330))
+        self.ekran.blit(p2_skor, p2_rect)
+        
+        # Seçenekler
+        yeniden_metni = self.kucuk_font.render('Yeniden oynamak için SPACE', True, BEYAZ)
+        yeniden_rect = yeniden_metni.get_rect(center=(self.ekran_genislik // 2, 410))
+        self.ekran.blit(yeniden_metni, yeniden_rect)
+        
+        menu_metni = self.kucuk_font.render('Ana menü için M', True, BEYAZ)
+        menu_rect = menu_metni.get_rect(center=(self.ekran_genislik // 2, 450))
+        self.ekran.blit(menu_metni, menu_rect)
+        
+        cikis_metni = self.kucuk_font.render('Çıkmak için ESC', True, GRI)
+        cikis_rect = cikis_metni.get_rect(center=(self.ekran_genislik // 2, 490))
+        self.ekran.blit(cikis_metni, cikis_rect)
+    
+    def pvp_isim_giris_ciz(self, aktif_oyuncu, isim1, isim2):
+        """PVP isim giriş ekranı"""
+        # Başlık
+        baslik = self.buyuk_font.render('PVP - OYUNCU İSİMLERİ', True, MAVI)
+        baslik_rect = baslik.get_rect(center=(self.ekran_genislik // 2, 100))
+        self.ekran.blit(baslik, baslik_rect)
+        
+        # Oyuncu 1 isim girişi
+        y1 = 220
+        p1_label = self.font.render('Oyuncu 1 (Mavi - WASD):', True, (100, 150, 255))
+        p1_label_rect = p1_label.get_rect(center=(self.ekran_genislik // 2, y1))
+        self.ekran.blit(p1_label, p1_label_rect)
+        
+        # Input kutusu
+        input1_rect = pygame.Rect(self.ekran_genislik // 2 - 150, y1 + 30, 300, 40)
+        pygame.draw.rect(self.ekran, BEYAZ if aktif_oyuncu == 1 else GRI, input1_rect, 3, border_radius=5)
+        if aktif_oyuncu == 1:
+            pygame.draw.rect(self.ekran, (50, 100, 150), input1_rect, border_radius=5)
+        
+        isim1_text = self.font.render(isim1 if isim1 else '|', True, BEYAZ)
+        isim1_text_rect = isim1_text.get_rect(center=(self.ekran_genislik // 2, y1 + 50))
+        self.ekran.blit(isim1_text, isim1_text_rect)
+        
+        # Oyuncu 2 isim girişi
+        y2 = 350
+        p2_label = self.font.render('Oyuncu 2 (Kırmızı - Ok Tuşları):', True, (255, 100, 100))
+        p2_label_rect = p2_label.get_rect(center=(self.ekran_genislik // 2, y2))
+        self.ekran.blit(p2_label, p2_label_rect)
+        
+        # Input kutusu
+        input2_rect = pygame.Rect(self.ekran_genislik // 2 - 150, y2 + 30, 300, 40)
+        pygame.draw.rect(self.ekran, BEYAZ if aktif_oyuncu == 2 else GRI, input2_rect, 3, border_radius=5)
+        if aktif_oyuncu == 2:
+            pygame.draw.rect(self.ekran, (150, 50, 50), input2_rect, border_radius=5)
+        
+        isim2_text = self.font.render(isim2 if isim2 else '|', True, BEYAZ)
+        isim2_text_rect = isim2_text.get_rect(center=(self.ekran_genislik // 2, y2 + 50))
+        self.ekran.blit(isim2_text, isim2_text_rect)
+        
+        # Talimatlar
+        if aktif_oyuncu == 1:
+            talimat = self.kucuk_font.render('İsim girin ve ENTER\'a basın', True, ACIK_GRI)
+        else:
+            talimat = self.kucuk_font.render('İsim girin ve ENTER\'a basın (Oyunu başlat)', True, ACIK_GRI)
+        
+        talimat_rect = talimat.get_rect(center=(self.ekran_genislik // 2, 480))
+        self.ekran.blit(talimat, talimat_rect)
+        
+        geri = self.kucuk_font.render('ESC - Geri Dön', True, GRI)
+        geri_rect = geri.get_rect(center=(self.ekran_genislik // 2, 520))
+        self.ekran.blit(geri, geri_rect)
+    
+    def bot_zorluk_secim_ciz(self, secili_zorluk="Orta"):
+        """Bot zorluk seçim ekranı - scroll destekli"""
+        # Başlık
+        baslik = self.buyuk_font.render('BOT ZORLUK SEÇİMİ', True, (200, 100, 255))
+        baslik_rect = baslik.get_rect(center=(self.ekran_genislik // 2, 80))
+        self.ekran.blit(baslik, baslik_rect)
+        
+        # Alt başlık
+        alt_baslik = self.kucuk_font.render('AI rakibinin zorluk seviyesini seçin', True, ACIK_GRI)
+        alt_baslik_rect = alt_baslik.get_rect(center=(self.ekran_genislik // 2, 130))
+        self.ekran.blit(alt_baslik, alt_baslik_rect)
+        
+        # Fare pozisyonu
+        mouse_pos = self.mouse_pozisyonu_al()
+        
+        # Zorluk kartları
+        self.zorluk_kartlari = []
+        from constants import BOT_ZORLUKLAR, BOT_ZORLUK_ACIKLAMALARI
+        
+        kart_genislik = 220
+        kart_yukseklik = 120
+        baslangic_y = 180
+        aralik = 30
+        
+        zorluk_renkleri = {
+            "Kolay": (100, 255, 100),   # Yeşil
+            "Orta": (255, 200, 100),    # Turuncu
+            "Zor": (255, 100, 100)      # Kırmızı
+        }
+        
+        for i, zorluk in enumerate(BOT_ZORLUKLAR):
+            # Scroll offset uygula
+            y = baslangic_y + i * (kart_yukseklik + aralik) + self.bot_zorluk_scroll_offset
+            x = (GENISLIK - kart_genislik) // 2
+            
+            kart_rect = pygame.Rect(x, y, kart_genislik, kart_yukseklik)
+            self.zorluk_kartlari.append((zorluk, kart_rect))
+            
+            # Ekranda görünür mü kontrol et
+            if y + kart_yukseklik < 150 or y > self.ekran_yukseklik - 100:
+                continue  # Görünmüyorsa çizme
+            
+            # Hover veya seçili efekti
+            if kart_rect.collidepoint(mouse_pos):
+                hover_rect = pygame.Rect(x - 5, y - 5, kart_genislik + 10, kart_yukseklik + 10)
+                pygame.draw.rect(self.ekran, (50, 30, 50), hover_rect, border_radius=15)
+            
+            # Kart arka planı
+            pygame.draw.rect(self.ekran, (40, 40, 40), kart_rect, border_radius=12)
+            
+            # Kenarlık
+            if zorluk == secili_zorluk:
+                kenarlik_renk = zorluk_renkleri[zorluk]
+                kenarlik_kalinlik = 4
+            elif kart_rect.collidepoint(mouse_pos):
+                kenarlik_renk = BEYAZ
+                kenarlik_kalinlik = 3
+            else:
+                kenarlik_renk = (100, 100, 100)
+                kenarlik_kalinlik = 2
+            
+            pygame.draw.rect(self.ekran, kenarlik_renk, kart_rect, kenarlik_kalinlik, border_radius=12)
+            
+            # Zorluk ismi
+            renk = zorluk_renkleri[zorluk]
+            zorluk_text = self.font.render(zorluk, True, renk)
+            zorluk_rect = zorluk_text.get_rect(center=(self.ekran_genislik // 2, y + 30))
+            self.ekran.blit(zorluk_text, zorluk_rect)
+            
+            # Açıklama
+            aciklama = BOT_ZORLUK_ACIKLAMALARI.get(zorluk, "")
+            aciklama_text = self.kucuk_font.render(aciklama, True, ACIK_GRI)
+            aciklama_rect = aciklama_text.get_rect(center=(self.ekran_genislik // 2, y + 65))
+            self.ekran.blit(aciklama_text, aciklama_rect)
+            
+            # Seçili işareti
+            if zorluk == secili_zorluk:
+                check = self.font.render('✓', True, renk)
+                check_rect = check.get_rect(topright=(x + kart_genislik - 15, y + 10))
+                self.ekran.blit(check, check_rect)
+            
+            # OYNA butonu (seçiliyse)
+            if zorluk == secili_zorluk:
+                oyna_text = self.kucuk_font.render('OYNA ▶', True, renk)
+                oyna_rect = oyna_text.get_rect(center=(self.ekran_genislik // 2, y + 95))
+                self.ekran.blit(oyna_text, oyna_rect)
+        
+        # Scroll ipucu (eğer scroll yapılabiliyorsa)
+        if self.bot_zorluk_scroll_offset > -100:  # Aşağı scroll yapılabilir
+            scroll_ipucu = self.kucuk_font.render('▼ Fare tekerleği ile kaydır', True, (150, 150, 150))
+            scroll_ipucu_rect = scroll_ipucu.get_rect(center=(self.ekran_genislik // 2, 520))
+            self.ekran.blit(scroll_ipucu, scroll_ipucu_rect)
+        
+        # Talimatlar
+        talimat = self.kucuk_font.render('↑↓ Ok tuşları veya 1/2/3 - Zorluk seç | SPACE/ENTER - Oyna', True, ACIK_GRI)
+        talimat_rect = talimat.get_rect(center=(self.ekran_genislik // 2, 545))
+        self.ekran.blit(talimat, talimat_rect)
+        
+        # Geri dön
+        geri_text = self.kucuk_font.render('ESC - Modlara Dön', True, GRI)
+        geri_rect = geri_text.get_rect(center=(self.ekran_genislik // 2, 570))
+        self.ekran.blit(geri_text, geri_rect)
+    
+    def pvp_mod_secim_ciz(self, secili_mod="Normal"):
+        """PVP mod seçim ekranı - Normal PVP veya Bomba PVP"""
+        # Başlık
+        baslik = self.buyuk_font.render('PVP MOD SEÇİMİ', True, (100, 200, 255))
+        baslik_rect = baslik.get_rect(center=(self.ekran_genislik // 2, 80))
+        self.ekran.blit(baslik, baslik_rect)
+        
+        # Alt başlık
+        alt_baslik = self.kucuk_font.render('İki oyunculu mod türünü seçin', True, ACIK_GRI)
+        alt_baslik_rect = alt_baslik.get_rect(center=(self.ekran_genislik // 2, 130))
+        self.ekran.blit(alt_baslik, alt_baslik_rect)
+        
+        # Fare pozisyonu
+        mouse_pos = self.mouse_pozisyonu_al()
+        
+        # PVP mod kartları
+        self.pvp_mod_kartlari = []
+        
+        kart_genislik = 300
+        kart_yukseklik = 140
+        baslangic_y = 200
+        aralik = 40
+        
+        # Mod bilgileri: (isim, emoji, renk, açıklama)
+        modlar = [
+            ("Normal", "⚔️", (100, 200, 255), "Klasik iki oyunculu mod", ["Bombalar yok", "Sadece saf rekabet"]),
+            ("Bomba", "💣⚔️", (255, 150, 50), "Bombalı iki oyunculu mod", ["10 dinamik bomba", "Her yem = yeni konumlar"])
+        ]
+        
+        for i, (mod_adi, emoji, renk, aciklama, ozellikler) in enumerate(modlar):
+            y = baslangic_y + i * (kart_yukseklik + aralik)
+            x = (GENISLIK - kart_genislik) // 2
+            
+            kart_rect = pygame.Rect(x, y, kart_genislik, kart_yukseklik)
+            self.pvp_mod_kartlari.append((mod_adi, kart_rect))
+            
+            # Hover veya seçili efekti
+            is_hover = kart_rect.collidepoint(mouse_pos)
+            is_selected = mod_adi == secili_mod
+            
+            if is_hover:
+                hover_rect = pygame.Rect(x - 5, y - 5, kart_genislik + 10, kart_yukseklik + 10)
+                pygame.draw.rect(self.ekran, (50, 50, 70), hover_rect, border_radius=15)
+            
+            # Kart arka planı
+            bg_color = (45, 45, 55) if is_selected or is_hover else (30, 30, 40)
+            pygame.draw.rect(self.ekran, bg_color, kart_rect, border_radius=12)
+            
+            # Kenarlık
+            if is_selected:
+                kenarlik_renk = renk
+                kenarlik_kalinlik = 4
+            elif is_hover:
+                kenarlik_renk = BEYAZ
+                kenarlik_kalinlik = 3
+            else:
+                kenarlik_renk = (80, 80, 100)
+                kenarlik_kalinlik = 2
+            
+            pygame.draw.rect(self.ekran, kenarlik_renk, kart_rect, kenarlik_kalinlik, border_radius=12)
+            
+            # Emoji ikonu (sol üst)
+            emoji_surf = self.render_emoji(emoji, 50, renk)
+            self.ekran.blit(emoji_surf, (x + 15, y + 15))
+            
+            # Mod ismi (üst sağ)
+            mod_text = self.font.render(f"{mod_adi} PVP", True, BEYAZ if is_hover or is_selected else ACIK_GRI)
+            mod_rect = mod_text.get_rect(left=x + 80, top=y + 20)
+            self.ekran.blit(mod_text, mod_rect)
+            
+            # Açıklama (orta)
+            aciklama_text = self.kucuk_font.render(aciklama, True, ACIK_GRI)
+            aciklama_rect = aciklama_text.get_rect(left=x + 80, top=y + 50)
+            self.ekran.blit(aciklama_text, aciklama_rect)
+            
+            # Özellikler (alt)
+            ozellik_y = y + 75
+            for ozellik in ozellikler:
+                ozellik_text = self.kucuk_font.render(f"• {ozellik}", True, renk if is_selected else (150, 150, 170))
+                self.ekran.blit(ozellik_text, (x + 20, ozellik_y))
+                ozellik_y += 20
+            
+            # Seçili işareti
+            if is_selected:
+                check = self.font.render('✓', True, renk)
+                check_rect = check.get_rect(topright=(x + kart_genislik - 15, y + 10))
+                self.ekran.blit(check, check_rect)
+            
+            # OYNA butonu (hover veya seçiliyse)
+            if is_hover or is_selected:
+                oyna_bg = pygame.Rect(x + kart_genislik - 90, y + kart_yukseklik - 35, 75, 25)
+                pygame.draw.rect(self.ekran, (50, 50, 60), oyna_bg, border_radius=5)
+                pygame.draw.rect(self.ekran, renk, oyna_bg, 2, border_radius=5)
+                oyna_text = self.kucuk_font.render('OYNA ▶', True, renk)
+                oyna_rect = oyna_text.get_rect(center=oyna_bg.center)
+                self.ekran.blit(oyna_text, oyna_rect)
+        
+        # Talimatlar
+        talimat = self.kucuk_font.render('↑↓ Ok tuşları veya 1/2 - Mod seç | SPACE/ENTER - Oyna', True, ACIK_GRI)
+        talimat_rect = talimat.get_rect(center=(self.ekran_genislik // 2, 545))
+        self.ekran.blit(talimat, talimat_rect)
+        
+        # Geri dön
+        geri_text = self.kucuk_font.render('ESC - Modlara Dön', True, GRI)
+        geri_rect = geri_text.get_rect(center=(self.ekran_genislik // 2, 570))
+        self.ekran.blit(geri_text, geri_rect)
+    
+    def modlar_menu_ciz(self, bomba_modu=False):
+        """Modlar menüsünü çizer"""
+        # Arka plan game.py'de çizildiği için burada fill yapmıyoruz
+        
+        # Fare pozisyonu al
+        mouse_pos = self.mouse_pozisyonu_al()
+        
+        # Başlık
+        baslik = self.buyuk_font.render('MODLAR', True, (100, 200, 255))
+        baslik_rect = baslik.get_rect(center=(self.ekran_genislik // 2, 40))
+        self.ekran.blit(baslik, baslik_rect)
+        
+        # Alt başlık
+        alt_baslik = self.kucuk_font.render('Oyun deneyimini değiştiren özel modlar', True, ACIK_GRI)
+        alt_baslik_rect = alt_baslik.get_rect(center=(self.ekran_genislik // 2, 75))
+        self.ekran.blit(alt_baslik, alt_baslik_rect)
+        
+        # Mod kartları - ölçeklendirilmiş 2x3 grid
+        scale_factor = self.ekran_genislik / 1600.0
+        scale_factor = max(1.0, min(2.5, scale_factor))
+        
+        y_start = int(130 * scale_factor)
+        card_width = int(400 * scale_factor)   # 320'den 400'e
+        card_height = int(140 * scale_factor)  # 120'den 140'a
+        x_spacing = int(450 * scale_factor)    # 360'tan 450'ye - daha fazla boşluk
+        y_spacing = int(160 * scale_factor)    # 140'tan 160'a - daha fazla boşluk
+        
+        # Mod bilgileri: (isim, ikon_emoji, renk, açıklama, rect_attr)
+        modlar = [
+            ("Normal", "🎮", YESIL, "Klasik yılan oyunu", "normal_rect", 0, 0),
+            ("Bomba", "💣", TURUNCU, "10 bomba, 2 blok dönüşüm", "bomba_rect", 1, 0),
+            ("PVP", "⚔️", MAVI, "2 oyuncu, aynı ekran", "pvp_rect", 0, 1),
+            ("Bot VS", "🤖", (255, 100, 150), "AI rakip ile oyna", "bot_rect", 1, 1),
+            ("Zamana Karşı", "🕐", (255, 215, 0), "60 saniyede maksimum puan", "zaman_rect", 0, 2),
+            ("Hayatta Kalma", "⚡", (255, 50, 200), "Hız artar, hayatta kal", "hayatta_kalma_rect", 1, 2)
+        ]
+        
+        for isim, ikon_emoji, renk, aciklama, rect_attr, col, row in modlar:
+            # Kart pozisyonu
+            x = self.ekran_genislik // 2 - x_spacing // 2 + col * x_spacing
+            y = y_start + row * y_spacing
+            
+            # Rect oluştur ve sakla
+            card_rect = pygame.Rect(x - card_width // 2, y, card_width, card_height)
+            setattr(self, rect_attr, card_rect)
+            
+            # Hover kontrolü
+            is_hover = card_rect.collidepoint(mouse_pos)
+            
+            # Kart arka planı
+            if is_hover:
+                pygame.draw.rect(self.ekran, (40, 50, 70), card_rect, border_radius=10)
+                pygame.draw.rect(self.ekran, renk, card_rect, 3, border_radius=10)
+            else:
+                pygame.draw.rect(self.ekran, (25, 25, 35), card_rect, border_radius=10)
+                pygame.draw.rect(self.ekran, (70, 70, 90), card_rect, 1, border_radius=10)
+            
+            # İkon (sol üst) - emoji ile - DAHA BÜYÜK VE BELİRGİN
+            emoji_surf = self.render_emoji(ikon_emoji, 65, renk)
+            self.ekran.blit(emoji_surf, (card_rect.x + 12, card_rect.y + 5))
+            
+            # Mod ismi (sağ üst)
+            isim_render = self.font.render(isim, True, BEYAZ if is_hover else ACIK_GRI)
+            self.ekran.blit(isim_render, (card_rect.x + 85, card_rect.y + 18))
+            
+            # Açıklama (alt)
+            aciklama_render = self.kucuk_font.render(aciklama, True, ACIK_GRI)
+            self.ekran.blit(aciklama_render, (card_rect.x + 20, card_rect.y + 65))
+            
+            # OYNA butonu (sağ alt)
+            if is_hover:
+                oyna_text = self.kucuk_font.render('OYNA', True, renk)
+                oyna_rect = oyna_text.get_rect(right=card_rect.right - 20, bottom=card_rect.bottom - 15)
+                # Buton arka planı
+                buton_bg = pygame.Rect(oyna_rect.x - 10, oyna_rect.y - 5, oyna_rect.width + 20, oyna_rect.height + 10)
+                pygame.draw.rect(self.ekran, (50, 50, 60), buton_bg, border_radius=5)
+                pygame.draw.rect(self.ekran, renk, buton_bg, 2, border_radius=5)
+                self.ekran.blit(oyna_text, oyna_rect)
+        
+        # Alt bilgi kutusu
+        bilgi_y = 520
+        bilgi_rect = pygame.Rect(self.ekran_genislik // 2 - 300, bilgi_y, 600, 28)
+        pygame.draw.rect(self.ekran, (20, 20, 30), bilgi_rect, border_radius=6)
+        
+        bilgi_text = self.kucuk_font.render('Karta tıklayın veya SPACE/1/2/3/4/5 tuşları', True, (150, 150, 200))
+        bilgi_text_rect = bilgi_text.get_rect(center=(self.ekran_genislik // 2, bilgi_y + 14))
+        self.ekran.blit(bilgi_text, bilgi_text_rect)
+        
+        # Geri dön
+        geri_text = self.kucuk_font.render('ESC - Ana Menü', True, GRI)
+        geri_rect = geri_text.get_rect(center=(self.ekran_genislik // 2, 560))
+        self.ekran.blit(geri_text, geri_rect)
+
+    def tema_menu_ciz(self, aktif_tema):
+        """Tema seçim menüsü"""
+        # Fare pozisyonu al
+        mouse_pos = self.mouse_pozisyonu_al()
+        
+        # Başlık
+        baslik = self.buyuk_font.render('TEMALAR', True, TURUNCU)
+        baslik_rect = baslik.get_rect(center=(self.ekran_genislik // 2, 60))
+        self.ekran.blit(baslik, baslik_rect)
+        
+        # Alt başlık
+        alt_baslik = self.kucuk_font.render('Oyun görünümünü değiştirin', True, ACIK_GRI)
+        alt_baslik_rect = alt_baslik.get_rect(center=(self.ekran_genislik // 2, 110))
+        self.ekran.blit(alt_baslik, alt_baslik_rect)
+        
+        # Tema kartları
+        self.tema_kartlari = []
+        tema_isimleri = list(TEMALAR.keys())
+        kart_genislik = 150
+        kart_yukseklik = 100
+        baslangic_x = (GENISLIK - (kart_genislik * 2 + 40)) // 2
+        baslangic_y = 160
+        
+        for i, tema_adi in enumerate(tema_isimleri):
+            satir = i // 2
+            sutun = i % 2
+            x = baslangic_x + sutun * (kart_genislik + 40)
+            y = baslangic_y + satir * (kart_yukseklik + 30)
+            
+            kart_rect = pygame.Rect(x, y, kart_genislik, kart_yukseklik)
+            self.tema_kartlari.append((tema_adi, kart_rect))
+            
+            # Tema renkleri
+            arkaplan_renk = TEMALAR[tema_adi]["arkaplan"]
+            izgara_renk = TEMALAR[tema_adi]["izgara"]
+            
+            # Kart arkaplan
+            pygame.draw.rect(self.ekran, arkaplan_renk, kart_rect, border_radius=10)
+            
+            # Seçili veya hover efekti
+            if tema_adi == aktif_tema:
+                pygame.draw.rect(self.ekran, YESIL, kart_rect, 4, border_radius=10)
+            elif kart_rect.collidepoint(mouse_pos):
+                pygame.draw.rect(self.ekran, BEYAZ, kart_rect, 3, border_radius=10)
+            else:
+                pygame.draw.rect(self.ekran, izgara_renk, kart_rect, 2, border_radius=10)
+            
+            # Tema adı
+            tema_text = self.font.render(tema_adi, True, BEYAZ)
+            tema_text_rect = tema_text.get_rect(center=(x + kart_genislik // 2, y + kart_yukseklik // 2))
+            self.ekran.blit(tema_text, tema_text_rect)
+            
+            # Seçili işareti
+            if tema_adi == aktif_tema:
+                check = self.kucuk_font.render('✓', True, YESIL)
+                check_rect = check.get_rect(topright=(x + kart_genislik - 10, y + 10))
+                self.ekran.blit(check, check_rect)
+        
+        # Talimat
+        talimat = self.kucuk_font.render('Temaya tıklayarak seçin', True, ACIK_GRI)
+        talimat_rect = talimat.get_rect(center=(self.ekran_genislik // 2, 490))
+        self.ekran.blit(talimat, talimat_rect)
+        
+        # Geri dön
+        geri_text = self.kucuk_font.render('ESC - Geri Dön', True, GRI)
+        geri_rect = geri_text.get_rect(center=(self.ekran_genislik // 2, 530))
+        self.ekran.blit(geri_text, geri_rect)
+    
+    def basarimlar_ekrani_ciz(self, basarim_yoneticisi):
+        """Başarımlar ekranı"""
+        # Fare pozisyonu al
+        mouse_pos = self.mouse_pozisyonu_al()
+        
+        # Başlık
+        baslik = self.buyuk_font.render('BAŞARIMLAR', True, (255, 215, 0))
+        baslik_rect = baslik.get_rect(center=(self.ekran_genislik // 2, 50))
+        self.ekran.blit(baslik, baslik_rect)
+        
+        # İlerleme
+        acik = basarim_yoneticisi.acik_basarim_sayisi()
+        toplam = basarim_yoneticisi.toplam_basarim_sayisi()
+        
+        # Trophy ikonu
+        trophy_icon = self.render_emoji('🏆', 32)
+        trophy_rect = trophy_icon.get_rect(center=(self.ekran_genislik // 2 - 150, 100))
+        self.ekran.blit(trophy_icon, trophy_rect)
+        
+        ilerleme_text = self.font.render(f'{acik}/{toplam} Başarım Açıldı', True, YESIL)
+        ilerleme_rect = ilerleme_text.get_rect(center=(self.ekran_genislik // 2 + 20, 100))
+        self.ekran.blit(ilerleme_text, ilerleme_rect)
+        
+        # Sıfırlama butonu
+        mouse_pos = self.mouse_pozisyonu_al()
+        self.sifirla_rect = pygame.Rect(self.ekran_genislik - 220, 80, 200, 35)
+        sifirla_renk = KIRMIZI if self.sifirla_rect.collidepoint(mouse_pos) else (200, 50, 50)
+        
+        pygame.draw.rect(self.ekran, (80, 20, 20), self.sifirla_rect, border_radius=5)
+        pygame.draw.rect(self.ekran, sifirla_renk, self.sifirla_rect, 2, border_radius=5)
+        
+        # Refresh ikonu
+        refresh_icon = self.render_emoji('🔄', 24)
+        self.ekran.blit(refresh_icon, (self.sifirla_rect.x + 10, self.sifirla_rect.y + 5))
+        
+        sifirla_text = self.kucuk_font.render('Başarımları Sıfırla', True, sifirla_renk)
+        sifirla_text_rect = sifirla_text.get_rect(left=self.sifirla_rect.x + 40, centery=self.sifirla_rect.centery)
+        self.ekran.blit(sifirla_text, sifirla_text_rect)
+        
+        # Başarımları listele - scroll ile
+        y_pos = 150 - self.basarim_scroll_offset
+        gosterilen = 0
+        self.basarim_rects = []  # Mouse için
+        
+        for anahtar, bilgi in BASARIMLAR.items():
+            basarim_durumu = basarim_yoneticisi.basarimlar.get(anahtar, {"acildi": False, "ilerleme": 0})
+            acildi = basarim_durumu["acildi"]
+            ilerleme = basarim_durumu["ilerleme"]
+            hedef = bilgi["hedef"]
+            
+            # Sadece görünür alanda olanları çiz
+            if y_pos < 130 or y_pos > 530:
+                y_pos += 45
+                continue
+            
+            # Başarım kartı
+            kart_rect = pygame.Rect(self.ekran_genislik // 2 - (self.ekran_genislik - 100) // 2, y_pos, self.ekran_genislik - 100, 35)
+            self.basarim_rects.append((anahtar, kart_rect))
+            
+            if acildi:
+                # Açık başarım - yeşil
+                pygame.draw.rect(self.ekran, (0, 100, 0), kart_rect, border_radius=5)
+                pygame.draw.rect(self.ekran, YESIL, kart_rect, 2, border_radius=5)
+                icon_char = "✓"
+                renk = YESIL
+            else:
+                # Kilitli başarım - gri
+                pygame.draw.rect(self.ekran, (30, 30, 30), kart_rect, border_radius=5)
+                pygame.draw.rect(self.ekran, GRI, kart_rect, 1, border_radius=5)
+                icon_char = "🔒"
+                renk = GRI
+            
+            # İkon render et
+            icon_img = self.render_emoji(icon_char, 24)
+            self.ekran.blit(icon_img, (60, y_pos + 5))
+            
+            # Başarım adı ve açıklama
+            isim_text = self.kucuk_font.render(f'{bilgi["isim"]}', True, renk)
+            self.ekran.blit(isim_text, (95, y_pos + 5))
+            
+            # İlerleme
+            if not acildi:
+                ilerleme_str = f'{ilerleme}/{hedef}'
+                ilerleme_text = self.kucuk_font.render(ilerleme_str, True, ACIK_GRI)
+                ilerleme_rect = ilerleme_text.get_rect(right=self.ekran_genislik - 60, centery=y_pos + 17)
+                self.ekran.blit(ilerleme_text, ilerleme_rect)
+            
+            y_pos += 45
+            gosterilen += 1
+        
+        # Scroll göstergesi
+        if toplam > 10:
+            mouse_icon = self.render_emoji('🖱️', 20)
+            mouse_rect = mouse_icon.get_rect(center=(self.ekran_genislik // 2 - 120, 545))
+            self.ekran.blit(mouse_icon, mouse_rect)
+            
+            scroll_text = self.kucuk_font.render('Mouse tekerleği ile kaydır', True, ACIK_GRI)
+            scroll_rect = scroll_text.get_rect(center=(self.ekran_genislik // 2 + 20, 545))
+            self.ekran.blit(scroll_text, scroll_rect)
+        
+        # Geri dön
+        geri_text = self.kucuk_font.render('ESC - Ana Menü', True, GRI)
+        geri_rect = geri_text.get_rect(center=(self.ekran_genislik // 2, 565))
+        self.ekran.blit(geri_text, geri_rect)
+    
+    def istatistikler_ekrani_ciz(self, istatistik_takipci):
+        """İstatistikler ekranı"""
+        # Başlık
+        baslik = self.buyuk_font.render('ISTATISTIKLER', True, (100, 200, 255))
+        baslik_rect = baslik.get_rect(center=(self.ekran_genislik // 2, 50))
+        
+        # Stats icon'u göster
+        if self.stats_icon:
+            icon_rect = self.stats_icon.get_rect()
+            icon_rect.midright = (baslik_rect.left - 10, baslik_rect.centery)
+            self.ekran.blit(self.stats_icon, icon_rect)
+        
+        self.ekran.blit(baslik, baslik_rect)
+        
+        stats = istatistik_takipci.istatistikler
+        
+        # Sol sütun
+        sol_x = 80
+        y_pos = 120
+        
+        stat_listesi = [
+            ("game", "Toplam Oyun:", str(stats["toplam_oyun"])),
+            ("score", "Toplam Skor:", str(stats["toplam_skor"])),
+            ("trophy", "En Yüksek:", str(stats["en_yuksek_skor"])),
+            ("chart", "Ortalama:", str(istatistik_takipci.ortalama_skor())),
+            ("apple", "Toplam Yem:", str(stats["toplam_yem"])),
+            ("crown", "Altin Elma:", str(stats["toplam_altin_elma"])),
+            ("diamond", "Elmas:", str(stats["toplam_elmas"])),
+            ("snake", "En Uzun Yilan:", str(stats["en_uzun_yilan"])),
+        ]
+        
+        for i, (icon_key, label, value) in enumerate(stat_listesi):
+            if i < 4:
+                x = sol_x
+                y = y_pos + i * 35
+            else:
+                x = self.ekran_genislik // 2 + 30
+                y = y_pos + (i - 4) * 35
+            
+            # Icon'u göster
+            if icon_key in self.stat_icons:
+                icon_rect = self.stat_icons[icon_key].get_rect()
+                # Toplam Skor için özel pozisyon (biraz sola)
+                if icon_key == 'score':
+                    icon_rect.midleft = (x - 2, y + 10)
+                else:
+                    icon_rect.midleft = (x, y + 10)
+                self.ekran.blit(self.stat_icons[icon_key], icon_rect)
+            
+            label_text = self.kucuk_font.render(label, True, ACIK_GRI)
+            self.ekran.blit(label_text, (x + 25, y))
+            
+            value_text = self.font.render(value, True, YESIL)
+            self.ekran.blit(value_text, (x + 200, y - 3))
+        
+        # Ölüm istatistikleri
+        y_pos = 300
+        olum_baslik = self.font.render('Olum Sebepleri', True, TURUNCU)
+        olum_rect = olum_baslik.get_rect(center=(self.ekran_genislik // 2, y_pos))
+        
+        # Kafatası icon'u göster
+        if 'skull' in self.stat_icons:
+            skull_icon = pygame.transform.scale(self.stat_icons['skull'], (30, 30))
+            skull_rect = skull_icon.get_rect()
+            skull_rect.midright = (olum_rect.left - 10, olum_rect.centery)
+            self.ekran.blit(skull_icon, skull_rect)
+        
+        self.ekran.blit(olum_baslik, olum_rect)
+        
+        y_pos += 40
+        olum_listesi = [
+            ("Duvara Çarpma:", stats.get("duvara_carpma", 0)),
+            ("Kendine Çarpma:", stats.get("kendine_carpma", 0)),
+            ("Bombaya Çarpma:", stats.get("bombaya_carpma", 0)),
+            ("PVP Kazanılan:", stats.get("pvp_kazanilan", 0)),
+            ("PVP Kaybedilen:", stats.get("pvp_kaybedilen", 0)),
+        ]
+        
+        for label, value in olum_listesi:
+            label_text = self.kucuk_font.render(label, True, ACIK_GRI)
+            label_rect = label_text.get_rect(center=(self.ekran_genislik // 2 - 80, y_pos))
+            self.ekran.blit(label_text, label_rect)
+            
+            # Renk seç (kazanma yeşil, kaybetme kırmızı, diğerleri kırmızı)
+            if "Kazanılan" in label:
+                renk = YESIL
+            else:
+                renk = KIRMIZI
+            
+            value_text = self.kucuk_font.render(str(value), True, renk)
+            value_rect = value_text.get_rect(center=(self.ekran_genislik // 2 + 80, y_pos))
+            self.ekran.blit(value_text, value_rect)
+            
+            y_pos += 30
+        
+        # Oyun süresi
+        sure_text = self.kucuk_font.render(f'Toplam Sure: {istatistik_takipci.toplam_oyun_suresi_str()}', True, MAVI)
+        sure_rect = sure_text.get_rect(center=(self.ekran_genislik // 2 + 15, 540))
+        
+        # Kronometre icon'u
+        if 'stopwatch' in self.stat_icons:
+            stopwatch_rect = self.stat_icons['stopwatch'].get_rect()
+            stopwatch_rect.midright = (sure_rect.left - 5, sure_rect.centery)
+            self.ekran.blit(self.stat_icons['stopwatch'], stopwatch_rect)
+        
+        self.ekran.blit(sure_text, sure_rect)
+        
+        # Geri dön
+        geri_text = self.kucuk_font.render('ESC - Ana Menü', True, GRI)
+        geri_rect = geri_text.get_rect(center=(self.ekran_genislik // 2, 575))
+        self.ekran.blit(geri_text, geri_rect)
+    
+    def muzik_secici_menu_ciz(self, ses_yoneticisi, secili_index=0, scroll_offset=0, secim_modu="MENU"):
+        """Müzik seçici menüsü - kullanıcı müziklerini gösterir"""
+        # Fare pozisyonu al
+        mouse_pos = self.mouse_pozisyonu_al()
+        
+        # Başlık
+        baslik = self.buyuk_font.render('MÜZİK SEÇİCİ', True, (100, 200, 255))
+        baslik_rect = baslik.get_rect(center=(self.ekran_genislik // 2, 40))
+        self.ekran.blit(baslik, baslik_rect)
+        
+        # Sekmeler - Ana Menü / Oyun İçi
+        sekme_y = 75
+        sekme_genislik = 150
+        sekme_yukseklik = 35
+        sekme_aralik = 10
+        
+        # Ana Menü sekmesi
+        menu_sekme_x = self.ekran_genislik // 2 - sekme_genislik - sekme_aralik // 2
+        menu_sekme_rect = pygame.Rect(menu_sekme_x, sekme_y, sekme_genislik, sekme_yukseklik)
+        menu_aktif = secim_modu == "MENU"
+        
+        # Oyun İçi sekmesi
+        oyun_sekme_x = self.ekran_genislik // 2 + sekme_aralik // 2
+        oyun_sekme_rect = pygame.Rect(oyun_sekme_x, sekme_y, sekme_genislik, sekme_yukseklik)
+        oyun_aktif = secim_modu == "OYUN"
+        
+        # Sekmeleri çiz
+        for sekme_rect, aktif, metin in [
+            (menu_sekme_rect, menu_aktif, "Ana Menü"),
+            (oyun_sekme_rect, oyun_aktif, "Oyun İçi")
+        ]:
+            if aktif:
+                pygame.draw.rect(self.ekran, (50, 50, 60), sekme_rect, border_radius=8)
+                pygame.draw.rect(self.ekran, (100, 200, 255), sekme_rect, 3, border_radius=8)
+            else:
+                pygame.draw.rect(self.ekran, (30, 30, 40), sekme_rect, border_radius=8)
+                pygame.draw.rect(self.ekran, (70, 70, 90), sekme_rect, 1, border_radius=8)
+            
+            sekme_text = self.kucuk_font.render(metin, True, BEYAZ if aktif else ACIK_GRI)
+            sekme_text_rect = sekme_text.get_rect(center=sekme_rect.center)
+            self.ekran.blit(sekme_text, sekme_text_rect)
+        
+        # Sekme rektlerini sakla (mouse tıklama için)
+        self.menu_muzik_sekme_rect = menu_sekme_rect
+        self.oyun_muzik_sekme_rect = oyun_sekme_rect
+        
+        # Alt başlık
+        alt_baslik_text = f'{"Ana menü" if menu_aktif else "Oyun içi"} müziğini seçin'
+        alt_baslik = self.kucuk_font.render(alt_baslik_text, True, ACIK_GRI)
+        alt_baslik_rect = alt_baslik.get_rect(center=(self.ekran_genislik // 2, 120))
+        self.ekran.blit(alt_baslik, alt_baslik_rect)
+        
+        # Kullanıcı müziklerini al
+        kullanici_muzikleri = ses_yoneticisi.kullanici_muzikleri_getir()
+        
+        # Yerleşik müzikler - isim ve yol çiftleri
+        yerlesik_muzikler = [
+            ("Normal Oyun Müziği", "Normal"),
+            ("Bomba Modu Müziği", "Bomba"),
+            ("Menü Müziği", "Menu")
+        ]
+        
+        # Tüm müzikler listesi
+        tum_muzikler = yerlesik_muzikler + kullanici_muzikleri
+        
+        if len(tum_muzikler) == 0:
+            # Müzik yok mesajı
+            mesaj1 = self.font.render('Henüz özel müzik yok!', True, TURUNCU)
+            mesaj1_rect = mesaj1.get_rect(center=(self.ekran_genislik // 2, 250))
+            self.ekran.blit(mesaj1, mesaj1_rect)
+            
+            mesaj2 = self.kucuk_font.render('music/ klasörüne MP3, WAV veya OGG dosyaları ekleyin', True, ACIK_GRI)
+            mesaj2_rect = mesaj2.get_rect(center=(self.ekran_genislik // 2, 300))
+            self.ekran.blit(mesaj2, mesaj2_rect)
+        else:
+            # Müzik listesi
+            y_start = 150  # Sekme eklediğimiz için daha aşağıda başla
+            card_height = 60
+            card_spacing = 62
+            max_visible = 6  # Bir tane daha az göster (sekme için yer açtık)
+            
+            # Scroll düzeltme
+            max_scroll = max(0, len(tum_muzikler) - max_visible)
+            scroll_offset = max(0, min(scroll_offset, max_scroll))
+            
+            # Müzik kartlarını çiz
+            self.muzik_rects = []
+            for i in range(scroll_offset, min(scroll_offset + max_visible, len(tum_muzikler))):
+                display_index = i - scroll_offset
+                y_pos = y_start + display_index * card_spacing
+                
+                # Kart alanı
+                card_width = 680
+                card_rect = pygame.Rect(self.ekran_genislik // 2 - card_width // 2, y_pos, card_width, card_height)
+                self.muzik_rects.append((i, card_rect))
+                
+                # Yerleşik mi kontrol
+                is_yerlesik = i < len(yerlesik_muzikler)
+                
+                # Seçili veya hover durumları
+                if i == secili_index:
+                    # Seçili - parlak yeşil
+                    pygame.draw.rect(self.ekran, (30, 80, 30), card_rect, border_radius=10)
+                    pygame.draw.rect(self.ekran, (0, 255, 100), card_rect, 3, border_radius=10)
+                    text_renk = BEYAZ
+                    etiket_renk = (0, 255, 100)
+                elif card_rect.collidepoint(mouse_pos):
+                    # Hover - mavi
+                    pygame.draw.rect(self.ekran, (40, 50, 70), card_rect, border_radius=10)
+                    pygame.draw.rect(self.ekran, (100, 200, 255), card_rect, 2, border_radius=10)
+                    text_renk = BEYAZ
+                    etiket_renk = (100, 200, 255)
+                else:
+                    # Normal - koyu
+                    pygame.draw.rect(self.ekran, (25, 25, 35), card_rect, border_radius=10)
+                    pygame.draw.rect(self.ekran, (70, 70, 90), card_rect, 1, border_radius=10)
+                    text_renk = ACIK_GRI
+                    etiket_renk = ACIK_GRI
+                
+                # İkon belirleme
+                if is_yerlesik:
+                    if "Normal" in tum_muzikler[i][0]:
+                        ikon = "🎮"
+                    elif "Bomba" in tum_muzikler[i][0]:
+                        ikon = "💣"
+                    else:
+                        ikon = "🏠"
+                    ikon_renk = TURUNCU
+                else:
+                    ikon = "🎵"
+                    ikon_renk = (100, 200, 255)
+                
+                # İkon çiz
+                ikon_text = self.font.render(ikon, True, ikon_renk)
+                self.ekran.blit(ikon_text, (card_rect.x + 15, card_rect.y + 15))
+                
+                # Müzik ismi - emoji olmadan
+                muzik_adi = tum_muzikler[i][0]
+                
+                # Uzun isimleri kısalt
+                max_uzunluk = 45
+                if len(muzik_adi) > max_uzunluk:
+                    muzik_adi = muzik_adi[:max_uzunluk-3] + '...'
+                
+                isim_text = self.font.render(muzik_adi, True, text_renk)
+                self.ekran.blit(isim_text, (card_rect.x + 70, card_rect.y + 10))
+                
+                # Tür etiketi (sağda, küçük)
+                if is_yerlesik:
+                    etiket_text = self.kucuk_font.render('Yerleşik', True, etiket_renk)
+                else:
+                    etiket_text = self.kucuk_font.render('Özel Müzik', True, etiket_renk)
+                
+                etiket_rect = etiket_text.get_rect(right=card_rect.right - 15, centery=card_rect.centery)
+                self.ekran.blit(etiket_text, etiket_rect)
+        
+        # Talimatlar kutusu
+        y_talimat = 530
+        talimat_bg = pygame.Rect(self.ekran_genislik // 2 - 350, y_talimat - 5, 700, 45)
+        pygame.draw.rect(self.ekran, (20, 20, 30), talimat_bg, border_radius=8)
+        pygame.draw.rect(self.ekran, (80, 80, 100), talimat_bg, 1, border_radius=8)
+        
+        if len(tum_muzikler) > 0:
+            talimat1 = self.kucuk_font.render('↑↓ Ok Tuşları veya Fare ile Seç  |  ENTER veya Tıklama ile Çal', True, BEYAZ)
+            talimat1_rect = talimat1.get_rect(center=(self.ekran_genislik // 2, y_talimat + 17))
+            self.ekran.blit(talimat1, talimat1_rect)
+        
+        # Geri dön
+        geri_text = self.kucuk_font.render('ESC - Ayarlara Dön', True, GRI)
+        geri_rect = geri_text.get_rect(center=(self.ekran_genislik // 2, 585))
+        self.ekran.blit(geri_text, geri_rect)
+        
+        return tum_muzikler
+
+    def krediler_ekrani_ciz(self):
+        """Emeği Geçenler - Krediler ekranı"""
+        # Fare pozisyonu al
+        mouse_pos = self.mouse_pozisyonu_al()
+        
+        # Başlık
+        baslik = self.buyuk_font.render('EMEĞİ GEÇENLER', True, (255, 215, 0))
+        baslik_rect = baslik.get_rect(center=(self.ekran_genislik // 2, 50))
+        self.ekran.blit(baslik, baslik_rect)
+        
+        # Alt başlık
+        alt_baslik = self.kucuk_font.render('Bu oyunu hayata geçiren insanlar', True, ACIK_GRI)
+        alt_baslik_rect = alt_baslik.get_rect(center=(self.ekran_genislik // 2, 85))
+        self.ekran.blit(alt_baslik, alt_baslik_rect)
+        
+        # Yapımcılar kartı
+        y_pos = 130
+        card_width = 600
+        card_height = 280
+        
+        # Ana kart
+        card_rect = pygame.Rect(self.ekran_genislik // 2 - card_width // 2, y_pos, card_width, card_height)
+        pygame.draw.rect(self.ekran, (25, 25, 35), card_rect, border_radius=15)
+        pygame.draw.rect(self.ekran, (255, 215, 0), card_rect, 3, border_radius=15)
+        
+        # İçerik
+        content_y = y_pos + 30
+        
+        # Oyun Tasarımı ve Kodlama
+        tasarim_baslik = self.font.render('🎮 Oyun Tasarımı & Kodlama', True, YESIL)
+        tasarim_rect = tasarim_baslik.get_rect(center=(self.ekran_genislik // 2, content_y))
+        self.ekran.blit(tasarim_baslik, tasarim_rect)
+        
+        # İsimler
+        isim1 = self.font.render('Burak Yaşayan', True, BEYAZ)
+        isim1_rect = isim1.get_rect(center=(self.ekran_genislik // 2, content_y + 40))
+        self.ekran.blit(isim1, isim1_rect)
+        
+        isim2 = self.font.render('Arda Demirkan', True, BEYAZ)
+        isim2_rect = isim2.get_rect(center=(self.ekran_genislik // 2, content_y + 75))
+        self.ekran.blit(isim2, isim2_rect)
+        
+        # Ayraç
+        pygame.draw.line(self.ekran, (70, 70, 90), 
+                        (self.ekran_genislik // 2 - 250, content_y + 110),
+                        (self.ekran_genislik // 2 + 250, content_y + 110), 2)
+        
+        # Özel Teşekkürler
+        tesekkur_baslik = self.kucuk_font.render('Özel Teşekkürler', True, (255, 215, 0))
+        tesekkur_rect = tesekkur_baslik.get_rect(center=(self.ekran_genislik // 2, content_y + 135))
+        self.ekran.blit(tesekkur_baslik, tesekkur_rect)
+        
+        # Teşekkür mesajı
+        mesaj1 = self.kucuk_font.render('Python & Pygame topluluğuna,', True, ACIK_GRI)
+        mesaj1_rect = mesaj1.get_rect(center=(self.ekran_genislik // 2, content_y + 165))
+        self.ekran.blit(mesaj1, mesaj1_rect)
+        
+        mesaj2 = self.kucuk_font.render('Bu projeyi oynarken eğlenen herkese,', True, ACIK_GRI)
+        mesaj2_rect = mesaj2.get_rect(center=(self.ekran_genislik // 2, content_y + 188))
+        self.ekran.blit(mesaj2, mesaj2_rect)
+        
+        mesaj3 = self.kucuk_font.render('Ve klasik yılan oyununu seven tüm oyunculara!', True, ACIK_GRI)
+        mesaj3_rect = mesaj3.get_rect(center=(self.ekran_genislik // 2, content_y + 211))
+        self.ekran.blit(mesaj3, mesaj3_rect)
+        
+        # Alt bilgi
+        tarih_text = self.kucuk_font.render('© 2025 - Tüm hakları saklıdır', True, GRI)
+        tarih_rect = tarih_text.get_rect(center=(self.ekran_genislik // 2, 455))
+        self.ekran.blit(tarih_text, tarih_rect)
+        
+        # Geri dön butonu
+        geri_text = self.kucuk_font.render('ESC - Ana Menü', True, GRI)
+        geri_rect = geri_text.get_rect(center=(self.ekran_genislik // 2, 490))
+        self.ekran.blit(geri_text, geri_rect)
+

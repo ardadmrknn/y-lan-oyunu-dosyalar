@@ -1,0 +1,48 @@
+{
+  "toplam_oyun": 224,
+  "toplam_skor": 11695,
+  "en_yuksek_skor": 750,
+  "toplam_yem": 468,
+  "toplam_altin_elma": 13,
+  "toplam_elmas": 10,
+  "en_uzun_yilan": 45,
+  "toplam_olum": 224,
+  "duvara_carpma": 0,
+  "kendine_carpma": 27,
+  "bombaya_carpma": 57,
+  "pvp_kaybedilen": 23,
+  "pvp_kazanilan": 11,
+  "toplam_oyun_suresi": 5706,
+  "mod_istatistikleri": {
+    "Normal": {
+      "oyun": 108,
+      "en_yuksek": 750
+    },
+    "Bomb Modu": {
+      "oyun": 36,
+      "en_yuksek": 120
+    },
+    "Bomba Modu": {
+      "oyun": 38,
+      "en_yuksek": 210
+    },
+    "PVP": {
+      "oyun": 29,
+      "en_yuksek": 200
+    },
+    "Bot VS": {
+      "oyun": 9,
+      "en_yuksek": 80
+    },
+    "Hayatta Kalma": {
+      "oyun": 3,
+      "en_yuksek": 230
+    },
+    "Zamana Karşı": {
+      "oyun": 1,
+      "en_yuksek": 250
+    }
+  },
+  "ilk_oyun_tarihi": "2025-10-28 17:33:13",
+  "son_oyun_tarihi": "2025-10-31 15:12:15"
+}

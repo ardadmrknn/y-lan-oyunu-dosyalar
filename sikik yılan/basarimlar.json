@@ -1,0 +1,134 @@
+{
+  "ilk_adim": {
+    "acildi": true,
+    "ilerleme": 1
+  },
+  "yemci": {
+    "acildi": true,
+    "ilerleme": 10
+  },
+  "acikmis": {
+    "acildi": true,
+    "ilerleme": 50
+  },
+  "usta_avcı": {
+    "acildi": true,
+    "ilerleme": 100
+  },
+  "puan_avcisi": {
+    "acildi": true,
+    "ilerleme": 370
+  },
+  "puanlama_ustasi": {
+    "acildi": false,
+    "ilerleme": 370
+  },
+  "efsane": {
+    "acildi": false,
+    "ilerleme": 370
+  },
+  "kucuk_yilan": {
+    "acildi": true,
+    "ilerleme": 27
+  },
+  "orta_yilan": {
+    "acildi": true,
+    "ilerleme": 27
+  },
+  "dev_yilan": {
+    "acildi": false,
+    "ilerleme": 27
+  },
+  "bomba_ustasi": {
+    "acildi": false,
+    "ilerleme": 71
+  },
+  "altin_avcisi": {
+    "acildi": true,
+    "ilerleme": 5
+  },
+  "elmas_toplama": {
+    "acildi": true,
+    "ilerleme": 3
+  },
+  "hizli_oyuncu": {
+    "acildi": true,
+    "ilerleme": 270
+  },
+  "tecrubeli": {
+    "acildi": true,
+    "ilerleme": 10
+  },
+  "bagimsiz": {
+    "acildi": true,
+    "ilerleme": 50
+  },
+  "maraton": {
+    "acildi": false,
+    "ilerleme": 55
+  },
+  "hizli_ofkeli": {
+    "acildi": true,
+    "ilerleme": 270
+  },
+  "bomba_imha": {
+    "acildi": true,
+    "ilerleme": 71
+  },
+  "mukemmellik": {
+    "acildi": true,
+    "ilerleme": 250
+  },
+  "uzun_maraton": {
+    "acildi": false,
+    "ilerleme": 0
+  },
+  "zaman_ustasi": {
+    "acildi": true,
+    "ilerleme": 250
+  },
+  "hayatta_kalma": {
+    "acildi": false,
+    "ilerleme": 0
+  },
+  "hiz_canavarı": {
+    "acildi": false,
+    "ilerleme": 3
+  },
+  "simsek_mcqueen": {
+    "acildi": false,
+    "ilerleme": 3
+  },
+  "kalkan_ustasi": {
+    "acildi": false,
+    "ilerleme": 6
+  },
+  "savunma_uzmani": {
+    "acildi": false,
+    "ilerleme": 6
+  },
+  "yavaslatici": {
+    "acildi": false,
+    "ilerleme": 3
+  },
+  "zaman_bükücü": {
+    "acildi": false,
+    "ilerleme": 3
+  },
+  "zehir_tadici": {
+    "acildi": false,
+    "ilerleme": 4
+  },
+  "zehir_asigi": {
+    "acildi": false,
+    "ilerleme": 4
+  },
+  "buz_krali": {
+    "acildi": false,
+    "ilerleme": 8
+  },
+  "buz_tanrisi": {
+    "acildi": false,
+    "ilerleme": 8
+  }
+}

@@ -1,0 +1,2138 @@
+"""
+Ana oyun sınıfı ve oyun döngüsü
+"""
+import pygame
+import sys
+import os
+import random
+import math
+from constants import *
+from snake import Yilan
+from ai_snake import AIYilan
+from food import Yem
+from menu import Menu
+from utils import gradient_arkaplan_ciz, izgara_ciz, arkaplan_yukle
+from settings import AyarYoneticisi
+from effects import YilanIziEfekti, YemYemeEfekti, PuanEfekti
+from bomb import BombManager
+from special_food import OzelYem, PVPOzelYem
+from achievements import BasarimYoneticisi
+from statistics import IstatistikTakipci
+from sounds import SesYoneticisi
+from event_handler import EventHandler
+import time
+
+
+class Oyun:
+    def __init__(self):
+        pygame.init()
+        
+        # Ayar yöneticisini başlat
+        self.ayar_yoneticisi = AyarYoneticisi()
+        ayarlar = self.ayar_yoneticisi.ayarlari_yukle()
+        
+        # Direkt tam ekran modunda başla
+        self.tam_ekran = True
+        
+        # Tam ekran oluştur
+        self.gercek_ekran = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        ekran_genislik = self.gercek_ekran.get_width()
+        ekran_yukseklik = self.gercek_ekran.get_height()
+        
+        # Oyun yüzeyini sabit boyutta tut
+        self.ekran = pygame.Surface((GENISLIK, YUKSEKLIK))
+        
+        pygame.display.set_caption('Yılan Oyunu 🐍')
+        self.saat = pygame.time.Clock()
+        self.yilan = None
+        self.yem = None
+        self.menu = Menu(self.ekran)
+        self.oyun_bitti = False
+        self.oyun_durumu = "MENU"  # MENU, MODLAR, SETTINGS, HIZ_AYAR, ARKAPLAN_AYAR, YILAN_AYAR, TEMA_AYAR, BASARIMLAR, ISTATISTIKLER, PVP_ISIM_GIRIS, BOT_ZORLUK_SECIM, PLAYING, PAUSED, GAME_OVER
+        self.oyun_duraklatildi = False  # Pause durumu
+        
+        # PVP isim girişi için
+        self.pvp_isim_input_aktif = 1  # 1: Oyuncu 1, 2: Oyuncu 2
+        self.pvp_oyuncu1_isim_temp = ""
+        self.pvp_oyuncu2_isim_temp = ""
+        
+        # Kaydedilmiş ayarları yükle
+        self.en_yuksek_skor = ayarlar.get("en_yuksek_skor", 0)
+        self.hiz_seviyesi = ayarlar.get("hiz_seviyesi", VARSAYILAN_HIZ_SEVIYESI)
+        self.menu_arkaplan_yolu = ayarlar.get("menu_arkaplan", None)
+        self.oyun_arkaplan_yolu = ayarlar.get("oyun_arkaplan", None)
+        self.yilan_renk = ayarlar.get("yilan_renk", VARSAYILAN_YILAN_RENK)
+        self.yilan_yuz = ayarlar.get("yilan_yuz", VARSAYILAN_YILAN_YUZ)
+        self.yilan_aksesuar = ayarlar.get("yilan_aksesuar", VARSAYILAN_YILAN_AKSESUAR)
+        self.bomba_modu = ayarlar.get("bomba_modu", False)  # Bomba modu ayarı
+        self.pvp_modu = False  # PVP modu (başlangıçta kapalı)
+        self.bot_modu = False  # Bot vs modu (başlangıçta kapalı)
+        self.bot_zorluk = VARSAYILAN_BOT_ZORLUK  # Bot zorluk seviyesi
+        self.pvp_bomba_modu = False  # PVP bomba modu (başlangıçta kapalı)
+        self.pvp_secili_mod = "Normal"  # PVP mod seçimi (Normal veya Bomba)
+        self.aktif_tema = ayarlar.get("aktif_tema", "Klasik")  # Tema ayarı
+        self.menu_muzik = ayarlar.get("menu_muzik", "Normal")  # Ana menü müziği
+        self.oyun_muzik = ayarlar.get("oyun_muzik", "Normal")  # Oyun içi müziği
+        
+        # PVP oyuncu isimleri
+        self.pvp_oyuncu1_isim = "Oyuncu 1"
+        self.pvp_oyuncu2_isim = "Oyuncu 2"
+        self.pvp_kazanan = None  # PVP kazananı
+        
+        # Kazanılan başarımlar (oyun bitince göstermek için)
+        self.yeni_basarimlar = []
+        
+        # Arka plan resimlerini yükle
+        self.menu_arkaplan = arkaplan_yukle(self.menu_arkaplan_yolu, GENISLIK, YUKSEKLIK)
+        self.oyun_arkaplan = arkaplan_yukle(self.oyun_arkaplan_yolu, GENISLIK, YUKSEKLIK)
+        
+        # Arka plan seçim menüsü için
+        self.arkaplan_menu_secim = "MENU"  # MENU veya OYUN
+        self.menu_bg_secili_index = -1  # -1 = varsayılan
+        self.oyun_bg_secili_index = -1
+        
+        # Yılan özelleştirme menüsü için
+        self.yilan_ozellestirme_secim = "RENK"  # RENK veya YUZ
+        
+        # Müzik seçici için ayrı indexler
+        self.menu_muzik_index = 0  # Ana menü müziği index
+        self.oyun_muzik_index = 0  # Oyun içi müziği index
+        self.muzik_secici_scroll = 0  # Scroll offset
+        
+        # Efektler
+        self.yilan_izi_efekti = YilanIziEfekti()
+        self.yem_yeme_efekti = YemYemeEfekti()
+        self.puan_efekti = PuanEfekti()
+        
+        # Yeni sistemler
+        self.basarim_yoneticisi = BasarimYoneticisi()
+        self.istatistik_takipci = IstatistikTakipci()
+        self.ses_yoneticisi = SesYoneticisi()
+        
+        # Başarımlar ve istatistikler için kısa erişim
+        self.basarimlar = self.basarim_yoneticisi
+        self.istatistikler = self.istatistik_takipci
+        
+        # Özel yem
+        self.ozel_yem = None
+        self.ozel_yem_aktif = False
+        self.dondurma_sayaci = 0  # Dondurucu yem süresi
+        
+        # Oyun başlangıç zamanı
+        self.oyun_baslangic_zamani = 0
+        
+        # Hareket sayacı (dondurma efekti için)
+        self.hareket_sayaci = 0
+        
+        # Bomba modu için değişkenler
+        self.bomba_yoneticisi = BombManager(
+            GENISLIK // HUCRE_BOYUTU, 
+            YUKSEKLIK // HUCRE_BOYUTU
+        )
+        self.sahte_yem = None  # Sahte yem
+        self.yem_sayaci = 0  # Her 3 yemde bir sahte yem spawn olur
+        self.son_bomba_eklenen_skor = 0  # Son bomba hangi skorda eklendi
+        
+        # Patlama efekti için
+        self.patlama_animasyon_sayaci = 0  # Patlama animasyonu için frame sayacı
+        self.patlama_pozisyon = None  # Patlama yeri
+        self.ekran_titreme_x = 0  # Ekran titremesi X
+        self.ekran_titreme_y = 0  # Ekran titremesi Y
+        
+        # Event handler'ı başlat (Modülerleştirme)
+        self.event_handler = EventHandler(self)
+        
+        # Oyun alanı her zaman sabit boyutta
+        self.oyun_genislik = GENISLIK
+        self.oyun_yukseklik = YUKSEKLIK
+        
+        # Ölçekleme hesapla
+        scale_x = ekran_genislik / GENISLIK
+        scale_y = ekran_yukseklik / YUKSEKLIK
+        self.scale = max(scale_x, scale_y)
+        
+        # Merkezleme için offset hesapla
+        scaled_genislik = int(GENISLIK * self.scale)
+        scaled_yukseklik = int(YUKSEKLIK * self.scale)
+        self.offset_x = (ekran_genislik - scaled_genislik) // 2
+        self.offset_y = (ekran_yukseklik - scaled_yukseklik) // 2
+        
+        # Menüye tam ekran bilgilerini aktar
+        self.menu.tam_ekran = True
+        self.menu.offset_x = self.offset_x
+        self.menu.offset_y = self.offset_y
+        self.menu.scale = self.scale
+        
+        # Ana menü müziğini başlat
+        self.ses_yoneticisi.muzik_cal(self.menu_muzik)
+
+    def tam_ekran_degistir(self):
+        """Tam ekran modunu değiştirir (ESC ile çıkış için)"""
+        # Tam ekrandan çıkmak için ESC kullan
+        pygame.quit()
+        sys.exit()
+
+    def yeni_oyun_basla(self, pvp=False, bot=False):
+        """Yeni oyun başlatır"""
+        self.pvp_modu = pvp
+        self.bot_modu = bot
+        
+        if self.pvp_modu:
+            # PVP modu - 2 yılan
+            # Oyuncu 1 (Mavi) - sol tarafta
+            self.yilan = Yilan(GENISLIK, YUKSEKLIK, 3, self.yilan_yuz, self.yilan_aksesuar)  # Mavi renk
+            self.yilan.pozisyonlar = [(10 * HUCRE_BOYUTU, (YUKSEKLIK // HUCRE_BOYUTU // 2) * HUCRE_BOYUTU)]
+            self.yilan.yon = (1, 0)  # Sağa bakıyor
+            
+            # Oyuncu 2 (Kırmızı) - sağ tarafta
+            self.yilan2 = Yilan(GENISLIK, YUKSEKLIK, 0, self.yilan_yuz, 0)  # Kırmızı renk, aksesuarsız
+            self.yilan2.pozisyonlar = [((GENISLIK // HUCRE_BOYUTU - 10) * HUCRE_BOYUTU, (YUKSEKLIK // HUCRE_BOYUTU // 2) * HUCRE_BOYUTU)]
+            self.yilan2.yon = (-1, 0)  # Sola bakıyor
+            
+            # PVP için kazanan
+            self.pvp_kazanan = None
+        elif self.bot_modu:
+            # Bot vs modu - Oyuncu vs AI
+            # Oyuncu (sol tarafta, seçilen renk)
+            self.yilan = Yilan(GENISLIK, YUKSEKLIK, self.yilan_renk, self.yilan_yuz, self.yilan_aksesuar)
+            self.yilan.pozisyonlar = [(10 * HUCRE_BOYUTU, (YUKSEKLIK // HUCRE_BOYUTU // 2) * HUCRE_BOYUTU)]
+            self.yilan.yon = (1, 0)  # Sağa bakıyor
+            
+            # Bot (sağ tarafta, turuncu renk)
+            self.yilan2 = AIYilan(GENISLIK, YUKSEKLIK, self.bot_zorluk.lower())
+            
+            # Bot için kazanan
+            self.pvp_kazanan = None
+        else:
+            # Normal mod - tek yılan
+            self.yilan = Yilan(GENISLIK, YUKSEKLIK, self.yilan_renk, self.yilan_yuz, self.yilan_aksesuar)
+            self.yilan2 = None
+        
+        self.yem = Yem(GENISLIK, YUKSEKLIK, sahte_mi=False)
+        
+        # Yem pozisyonunu yılanlardan uzak yerleştir
+        yasak_poz = set(self.yilan.pozisyonlar)
+        if (self.pvp_modu or self.bot_modu) and self.yilan2:
+            yasak_poz.update(self.yilan2.pozisyonlar)
+        
+        while self.yem.pozisyon in yasak_poz:
+            self.yem.rastgele_konumla()
+        
+        self.oyun_bitti = False
+        self.oyun_durumu = "PLAYING"
+        self.oyun_duraklatildi = False  # Pause durumunu sıfırla
+        # Efektleri temizle
+        self.yilan_izi_efekti.temizle()
+        self.yem_yeme_efekti.temizle()
+        self.puan_efekti.temizle()
+        
+        # Patlama animasyonunu sıfırla
+        self.patlama_animasyon_sayaci = 0
+        self.patlama_pozisyon = None
+        self.ekran_titreme_x = 0
+        self.ekran_titreme_y = 0
+        
+        # Özel yem sistemi
+        self.ozel_yem = None
+        self.ozel_yem_aktif = False
+        self.dondurma_sayaci = 0
+        
+        # PVP özel yemleri
+        self.pvp_ozel_yem_p1 = None  # Oyuncu 1'e özel yem
+        self.pvp_ozel_yem_p2 = None  # Oyuncu 2'ye özel yem
+        self.pvp_yem_spawn_sayaci = 0  # Özel yem spawn zamanlayıcı
+        self.pvp_yem_spawn_sure = random.randint(150, 300)  # 5-10 saniye arası (30 FPS'de)
+        
+        # Skor bazlı özel yem spawn
+        self.p1_son_ozel_yem_skoru = 0  # Oyuncu 1'in son özel yem aldığı skor
+        self.p2_son_ozel_yem_skoru = 0  # Oyuncu 2'nin son özel yem aldığı skor
+        self.ozel_yem_skor_araligi = 50  # Her 50 skorda özel yem
+        
+        # Oyuncu yetenekleri
+        self.p1_kalkan_aktif = False  # Oyuncu 1'in kalkanı
+        self.p2_kalkan_aktif = False  # Oyuncu 2'nin kalkanı
+        self.p1_hiz_suresi = 0  # Oyuncu 1'in kalan hız süresi (saniye)
+        self.p2_hiz_suresi = 0  # Oyuncu 2'nin kalan hız süresi (saniye)
+        self.p1_shift_basmaya_basladi = False  # Shift basılı mı
+        self.p2_shift_basmaya_basladi = False
+        self.p1_hiz_boost_aktif = False  # Şu anda hızlanıyor mu
+        self.p2_hiz_boost_aktif = False
+        
+        # İstatistik takibi başlat
+        self.istatistik_takipci.oyun_basladi()
+        self.oyun_baslangic_zamani = time.time()
+        
+        # Başarım - İlk oyun
+        self.basarim_yoneticisi.ilerleme_kaydet("ilk_adim", 1)
+        
+        # Bomba modu aktifse bombaları oluştur
+        self.sahte_yem = None
+        self.yem_sayaci = 0
+        self.son_bomba_eklenen_skor = 0  # Skor takibi sıfırla
+        if self.bomba_modu:
+            # Bombaları tamamen temizle ve yeniden oluştur
+            self.bomba_yoneticisi.bombalar.clear()
+            # Her zaman ilk 10 bomba ile başla
+            yasak_pozisyonlar = set(self.yilan.pozisyonlar)
+            yasak_pozisyonlar.add(self.yem.pozisyon)
+            # PVP bomba modunda ikinci yılanı da ekle
+            if (self.pvp_modu or self.bot_modu) and self.yilan2:
+                yasak_pozisyonlar.update(self.yilan2.pozisyonlar)
+            # PVP bomba modunda 3 blok minimum mesafe
+            min_mesafe = 3 if (self.pvp_modu or self.bot_modu) else 0
+            self.bomba_yoneticisi.bombalari_olustur(yasak_pozisyonlar, min_mesafe)
+            # Bomba modu müziği
+            if self.oyun_muzik and self.oyun_muzik != "Normal":
+                # Kullanıcı seçtiği müziği çal
+                self.ses_yoneticisi.muzik_cal(self.oyun_muzik)
+            else:
+                # Varsayılan bomba müziği
+                self.ses_yoneticisi.muzik_cal("Bomb Modu")
+        else:
+            # Normal mod müziği
+            if self.oyun_muzik and self.oyun_muzik != "Normal":
+                # Kullanıcı seçtiği müziği çal
+                self.ses_yoneticisi.muzik_cal(self.oyun_muzik)
+            else:
+                # Varsayılan normal müzik
+                self.ses_yoneticisi.muzik_cal("Normal")
+        
+        # Oyun başladığında fare imlecini gizle
+        pygame.mouse.set_visible(False)
+
+    def ana_menuye_don(self):
+        """Ana menüye döner"""
+        self.oyun_durumu = "MENU"
+        self.yilan = None
+        self.yem = None
+        # Scroll offset'i sıfırla
+        self.menu.basarim_scroll_offset = 0
+        # Ana menü müziğini çal
+        self.ses_yoneticisi.muzik_cal(self.menu_muzik)
+        # Menüye dönerken fare imlecini göster
+        pygame.mouse.set_visible(True)
+    
+    def ayarlari_kaydet(self):
+        """Ayarları dosyaya kaydeder"""
+        self.ayar_yoneticisi.ayarlari_kaydet(
+            self.hiz_seviyesi, 
+            self.en_yuksek_skor,
+            self.menu_arkaplan_yolu,
+            self.oyun_arkaplan_yolu,
+            self.yilan_renk,
+            self.yilan_yuz,
+            self.bomba_modu,
+            self.aktif_tema,
+            self.yilan_aksesuar,
+            self.menu_muzik,
+            self.oyun_muzik
+        )
+    
+    def _muzik_indexi_bul(self, muzik_adi):
+        """Verilen müzik adının indexini bulur"""
+        # Yerleşik müzikler
+        yerlesik_muzikler = [
+            ("Normal Oyun Müziği", "Normal"),
+            ("Bomba Modu Müziği", "Bomba"),
+            ("Menü Müziği", "Menu")
+        ]
+        
+        # Kullanıcı müzikleri
+        kullanici_muzikleri = self.ses_yoneticisi.kullanici_muzikleri_getir()
+        
+        # Tüm müzikler
+        tum_muzikler = yerlesik_muzikler + kullanici_muzikleri
+        
+        # Index bul
+        for i, (_, yol) in enumerate(tum_muzikler):
+            if yol == muzik_adi:
+                return i
+        
+        return 0  # Bulunamazsa ilk müziği seç
+    
+    def _pvp_ozel_yem_spawn_icin(self, oyuncu):
+        """Belirli oyuncu için özel yem spawn eder - OPTİMİZE EDİLDİ"""
+        if not self.pvp_modu and not self.bot_modu:
+            return
+        
+        # Yasak pozisyonları tek seferde topla (set comprehension ile)
+        yasak_poz = set(self.yilan.pozisyonlar) | set(self.yilan2.pozisyonlar) | {self.yem.pozisyon}
+        
+        # Özel yemleri ekle
+        if self.pvp_ozel_yem_p1:
+            yasak_poz.add(self.pvp_ozel_yem_p1.pozisyon)
+        if self.pvp_ozel_yem_p2:
+            yasak_poz.add(self.pvp_ozel_yem_p2.pozisyon)
+        
+        # Bomba modundaysa bombaları da ekle
+        if self.pvp_bomba_modu:
+            yasak_poz.update(self.bomba_yoneticisi.bombalar)
+        
+        # Yılan rengini ve yemi oluştur (tek satırda)
+        yilan_renk = YILAN_RENKLERI[self.yilan.renk_index if oyuncu == 1 else self.yilan2.renk_index][1]
+        yem = PVPOzelYem(tur=random.choice(["kalkan", "hiz"]), sahip_oyuncu=oyuncu, yilan_renk=yilan_renk)
+        
+        # Güvenli pozisyon bul (optimized loop)
+        for _ in range(100):
+            yem.rastgele_konumla()
+            if yem.pozisyon not in yasak_poz:
+                break
+        
+        # İlgili oyuncunun yemine ata (ternary ile)
+        if oyuncu == 1:
+            self.pvp_ozel_yem_p1 = yem
+        else:
+            self.pvp_ozel_yem_p2 = yem
+    
+    def _pvp_ozel_yem_spawn(self):
+        """PVP modunda rastgele oyuncu için özel yem spawn eder"""
+        # Rastgele oyuncu seç
+        oyuncu = random.choice([1, 2])
+        self._pvp_ozel_yem_spawn_icin(oyuncu)
+    
+    def _pvp_kalkan_kullan(self, oyuncu):
+        """Kalkan yeteneğini kullanır"""
+        if oyuncu == 1:
+            if self.p1_kalkan_aktif:
+                self.p1_kalkan_aktif = False
+                return True  # Kalkan kullanıldı
+        else:
+            if self.p2_kalkan_aktif:
+                self.p2_kalkan_aktif = False
+                return True  # Kalkan kullanıldı
+        return False  # Kalkan yoktu
+
+    def olay_isle(self):
+        """Olayları işler - MOD modülerleştir EventHandler kullanarak (721 → 45 satır)"""
+        for olay in pygame.event.get():
+            if olay.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            
+            # Fare tıklama - EventHandler'a devret
+            if olay.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = self.event_handler.normalize_mouse_pos(pygame.mouse.get_pos())
+                
+                # Ana menü
+                if self.oyun_durumu == "MENU":
+                    self.event_handler.handle_menu_click(mouse_pos)
+                # Mod seçimi
+                elif self.oyun_durumu == "MODLAR":
+                    self.event_handler.handle_modes_click(mouse_pos)
+                
+                # Tema seçimi fare tıklamaları
+                elif self.oyun_durumu == "TEMA_AYAR":
+                    if hasattr(self.menu, 'tema_kartlari'):
+                        for tema_adi, rect in self.menu.tema_kartlari:
+                            if rect.collidepoint(mouse_pos):
+                                self.aktif_tema = tema_adi
+                                self.ayarlari_kaydet()
+                                break
+                
+                # Hız ayarları fare tıklamaları
+                elif self.oyun_durumu == "HIZ_AYAR":
+                    if hasattr(self.menu, 'hiz_secenekleri_rects'):
+                        for hiz_index, rect in self.menu.hiz_secenekleri_rects:
+                            if rect.collidepoint(mouse_pos):
+                                self.hiz_seviyesi = hiz_index
+                                self.ayarlari_kaydet()
+                                break
+                
+                # Yılan renk seçimi fare tıklamaları
+                elif self.oyun_durumu == "YILAN_AYAR":
+                    # Sekme tıklamaları
+                    if hasattr(self.menu, 'renk_tab_rect') and self.menu.renk_tab_rect.collidepoint(mouse_pos):
+                        self.yilan_ozellestirme_secim = "RENK"
+                    elif hasattr(self.menu, 'yuz_tab_rect') and self.menu.yuz_tab_rect.collidepoint(mouse_pos):
+                        self.yilan_ozellestirme_secim = "YUZ"
+                    elif hasattr(self.menu, 'aksesuar_tab_rect') and self.menu.aksesuar_tab_rect.collidepoint(mouse_pos):
+                        self.yilan_ozellestirme_secim = "AKSESUAR"
+                    
+                    # Renk seçimi
+                    if self.yilan_ozellestirme_secim == "RENK":
+                        if hasattr(self.menu, 'renk_rects'):
+                            for renk_index, rect in self.menu.renk_rects:
+                                if rect.collidepoint(mouse_pos):
+                                    self.yilan_renk = renk_index
+                                    self.ayarlari_kaydet()
+                                    break
+                    # Yüz seçimi
+                    elif self.yilan_ozellestirme_secim == "YUZ":
+                        if hasattr(self.menu, 'yuz_rects'):
+                            for yuz_index, rect in self.menu.yuz_rects:
+                                if rect.collidepoint(mouse_pos):
+                                    self.yilan_yuz = yuz_index
+                                    self.ayarlari_kaydet()
+                                    break
+                    # Aksesuar seçimi
+                    elif self.yilan_ozellestirme_secim == "AKSESUAR":
+                        if hasattr(self.menu, 'aksesuar_rects'):
+                            for aksesuar_index, rect in self.menu.aksesuar_rects:
+                                if rect.collidepoint(mouse_pos):
+                                    self.yilan_aksesuar = aksesuar_index
+                                    self.ayarlari_kaydet()
+                                    break
+                
+                # Arka plan ayarları fare tıklamaları
+                elif self.oyun_durumu == "ARKAPLAN_AYAR":
+                    # Sekme tıklamaları
+                    if hasattr(self.menu, 'menu_bg_tab_rect') and self.menu.menu_bg_tab_rect.collidepoint(mouse_pos):
+                        self.arkaplan_menu_secim = "MENU"
+                    elif hasattr(self.menu, 'oyun_bg_tab_rect') and self.menu.oyun_bg_tab_rect.collidepoint(mouse_pos):
+                        self.arkaplan_menu_secim = "OYUN"
+                    
+                    # Arka plan seçimi
+                    if hasattr(self.menu, 'arkaplan_rects'):
+                        for bg_index, rect in self.menu.arkaplan_rects:
+                            if rect.collidepoint(mouse_pos):
+                                if self.arkaplan_menu_secim == "MENU":
+                                    self.menu_bg_secili_index = bg_index
+                                else:
+                                    self.oyun_bg_secili_index = bg_index
+                                break
+                
+                # Bot zorluk seçimi fare tıklamaları
+                elif self.oyun_durumu == "BOT_ZORLUK_SECIM":
+                    if hasattr(self.menu, 'zorluk_kartlari'):
+                        for zorluk_adi, rect in self.menu.zorluk_kartlari:
+                            if rect.collidepoint(mouse_pos):
+                                self.bot_zorluk = zorluk_adi
+                                # Otomatik scroll seçilen zorluk için
+                                if zorluk_adi == "Kolay":
+                                    self.menu.bot_zorluk_scroll_offset = 0
+                                elif zorluk_adi == "Orta":
+                                    self.menu.bot_zorluk_scroll_offset = -75
+                                else:  # Zor
+                                    self.menu.bot_zorluk_scroll_offset = -150
+                                # Seçilen zorlukla oyunu başlat
+                                self.ayarlari_kaydet()
+                                self.yeni_oyun_basla(pvp=False, bot=True)
+                                break
+                
+                # PVP mod seçimi fare tıklamaları
+                elif self.oyun_durumu == "PVP_MOD_SECIM":
+                    if hasattr(self.menu, 'pvp_mod_kartlari'):
+                        for mod_adi, rect in self.menu.pvp_mod_kartlari:
+                            if rect.collidepoint(mouse_pos):
+                                self.pvp_secili_mod = mod_adi
+                                # Seçilen moda göre bomba modunu ayarla
+                                if mod_adi == "Bomba":
+                                    self.pvp_bomba_modu = True
+                                else:
+                                    self.pvp_bomba_modu = False
+                                # İsim girişine geç
+                                self.pvp_oyuncu1_isim_temp = ""
+                                self.pvp_oyuncu2_isim_temp = ""
+                                self.pvp_isim_input_aktif = 1
+                                self.oyun_durumu = "PVP_ISIM_GIRIS"
+                                break
+                
+                # Müzik seçici fare tıklamaları
+                elif self.oyun_durumu == "MUZIK_SECICI":
+                    # Sekme tıklamaları
+                    if hasattr(self.menu, 'menu_muzik_sekme_rect') and self.menu.menu_muzik_sekme_rect.collidepoint(mouse_pos):
+                        self.muzik_secim_modu = "MENU"
+                    elif hasattr(self.menu, 'oyun_muzik_sekme_rect') and self.menu.oyun_muzik_sekme_rect.collidepoint(mouse_pos):
+                        self.muzik_secim_modu = "OYUN"
+                    
+                    # Müzik kartı tıklamaları
+                    if hasattr(self.menu, 'muzik_rects'):
+                        for muzik_index, rect in self.menu.muzik_rects:
+                            if rect.collidepoint(mouse_pos):
+                                # Aktif indexi belirle
+                                aktif_index = self.menu_muzik_index if self.muzik_secim_modu == "MENU" else self.oyun_muzik_index
+                                
+                                # Müzik çal
+                                tum_muzikler = self.menu.muzik_secici_menu_ciz(self.ses_yoneticisi, aktif_index, self.muzik_secici_scroll, self.muzik_secim_modu)
+                                if muzik_index < len(tum_muzikler):
+                                    muzik_adi_veya_yol = tum_muzikler[muzik_index][1]
+                                    self.ses_yoneticisi.muzik_cal(muzik_adi_veya_yol)
+                                    # Seçili müziği kaydet
+                                    if self.muzik_secim_modu == "MENU":
+                                        self.menu_muzik = muzik_adi_veya_yol
+                                        self.menu_muzik_index = muzik_index
+                                    else:
+                                        self.oyun_muzik = muzik_adi_veya_yol
+                                        self.oyun_muzik_index = muzik_index
+                                    self.ayarlari_kaydet()
+                                break
+            
+            # Mouse tekerleği - Başarımlar ve Bot zorluk scroll
+            if olay.type == pygame.MOUSEWHEEL:
+                if self.oyun_durumu == "BASARIMLAR":
+                    # Her scroll 45 pixel (bir başarım yüksekliği)
+                    self.menu.basarim_scroll_offset -= olay.y * 45
+                    # Scroll sınırlarını ayarla (0 ile max scroll arasında)
+                    toplam_basarim = len(BASARIMLAR)
+                    max_scroll = max(0, (toplam_basarim - 8) * 45)  # 8 başarım görünür alana sığıyor
+                    self.menu.basarim_scroll_offset = max(0, min(self.menu.basarim_scroll_offset, max_scroll))
+                elif self.oyun_durumu == "BOT_ZORLUK_SECIM":
+                    # Bot zorluk seçim ekranında scroll
+                    self.menu.bot_zorluk_scroll_offset += olay.y * 30
+                    # Scroll sınırları: yukarı en fazla 0, aşağı en fazla -150
+                    self.menu.bot_zorluk_scroll_offset = max(-150, min(0, self.menu.bot_zorluk_scroll_offset))
+                elif self.oyun_durumu == "MUZIK_SECICI":
+                    # Müzik seçici scroll
+                    self.muzik_secici_scroll -= olay.y
+                    self.muzik_secici_scroll = max(0, self.muzik_secici_scroll)
+            
+            if olay.type == pygame.KEYDOWN:
+                # ESC ile çıkış veya geri dönme
+                if olay.key == pygame.K_ESCAPE:
+                    if self.oyun_durumu == "MODLAR" or self.oyun_durumu == "BASARIMLAR" or self.oyun_durumu == "ISTATISTIKLER":
+                        self.ana_menuye_don()
+                    elif self.oyun_durumu == "PVP_ISIM_GIRIS":
+                        # PVP isim girişinden mod seçimine geri dön
+                        self.oyun_durumu = "PVP_MOD_SECIM"
+                    elif self.oyun_durumu == "BOT_ZORLUK_SECIM" or self.oyun_durumu == "PVP_MOD_SECIM":
+                        # Bot zorluk/PVP mod seçiminden modlar menüsüne dön
+                        self.oyun_durumu = "MODLAR"
+                    elif self.oyun_durumu == "HIZ_AYAR" or self.oyun_durumu == "ARKAPLAN_AYAR" or self.oyun_durumu == "YILAN_AYAR" or self.oyun_durumu == "TEMA_AYAR" or self.oyun_durumu == "MUZIK_SECICI":
+                        self.oyun_durumu = "SETTINGS"
+                        self.menu.ayar_alt_menu = None
+                        pygame.mouse.set_visible(True)  # Ayarlar menüsüne dönerken fareyi göster
+                    elif self.oyun_durumu == "SETTINGS":
+                        self.ana_menuye_don()
+                    elif self.oyun_durumu == "PLAYING":
+                        self.ana_menuye_don()
+                    elif self.oyun_durumu == "GAME_OVER":
+                        # Game over'dan geri dönüş - bot moduna göre
+                        if self.bot_modu:
+                            # Bot modunda iken bot zorluk seçimine dön
+                            self.menu.bot_zorluk_scroll_offset = 0  # Scroll'u sıfırla
+                            self.oyun_durumu = "BOT_ZORLUK_SECIM"
+                            pygame.mouse.set_visible(True)
+                        else:
+                            # Diğer modlarda ana menüye dön
+                            self.ana_menuye_don()
+                    else:
+                        pygame.quit()
+                        sys.exit()
+                
+                # Ana menü kontrolleri
+                if self.oyun_durumu == "MENU":
+                    if olay.key == pygame.K_SPACE:
+                        self.yeni_oyun_basla()
+                    elif olay.key == pygame.K_m:
+                        self.oyun_durumu = "MODLAR"
+                        pygame.mouse.set_visible(True)  # Modlara girerken fareyi göster
+                    elif olay.key == pygame.K_s:
+                        self.oyun_durumu = "SETTINGS"
+                        pygame.mouse.set_visible(True)  # Ayarlara girerken fareyi göster
+                    elif olay.key == pygame.K_a:
+                        self.oyun_durumu = "BASARIMLAR"
+                        pygame.mouse.set_visible(True)
+                    elif olay.key == pygame.K_i:
+                        self.oyun_durumu = "ISTATISTIKLER"
+                        pygame.mouse.set_visible(True)
+                
+                # Başarımlar ekranı kontrolleri
+                elif self.oyun_durumu == "BASARIMLAR":
+                    if olay.key == pygame.K_ESCAPE:
+                        self.ana_menuye_don()
+                
+                # İstatistikler ekranı kontrolleri
+                elif self.oyun_durumu == "ISTATISTIKLER":
+                    if olay.key == pygame.K_ESCAPE:
+                        self.ana_menuye_don()
+                
+                # Krediler ekranı kontrolleri
+                elif self.oyun_durumu == "KREDILER":
+                    if olay.key == pygame.K_ESCAPE:
+                        self.ana_menuye_don()
+                
+                # Modlar menüsü kontrolleri
+                elif self.oyun_durumu == "MODLAR":
+                    if olay.key == pygame.K_SPACE:
+                        # Normal modu aç ve oyunu başlat (bomba modu kapalı)
+                        self.bomba_modu = False
+                        self.ayarlari_kaydet()
+                        self.yeni_oyun_basla(pvp=False, bot=False)
+                    elif olay.key == pygame.K_1:
+                        # Bomba modunu aç ve oyunu başlat
+                        self.bomba_modu = True
+                        self.ayarlari_kaydet()
+                        self.yeni_oyun_basla(pvp=False, bot=False)
+                    elif olay.key == pygame.K_2:
+                        # PVP moduna geç - önce isim gir
+                        self.bomba_modu = False
+                        self.pvp_oyuncu1_isim_temp = ""
+                        self.pvp_oyuncu2_isim_temp = ""
+                        self.pvp_isim_input_aktif = 1
+                        self.oyun_durumu = "PVP_ISIM_GIRIS"
+                        pygame.mouse.set_visible(True)
+                    elif olay.key == pygame.K_3:
+                        # Bot vs moduna geç - zorluk seç
+                        self.bomba_modu = False
+                        self.oyun_durumu = "BOT_ZORLUK_SECIM"
+                        pygame.mouse.set_visible(True)
+                    elif olay.key == pygame.K_m:
+                        self.ana_menuye_don()
+                
+                # PVP isim giriş kontrolleri
+                elif self.oyun_durumu == "PVP_ISIM_GIRIS":
+                    if olay.key == pygame.K_RETURN or olay.key == pygame.K_KP_ENTER:
+                        if self.pvp_isim_input_aktif == 1:
+                            # Oyuncu 1 adını kaydet, Oyuncu 2'ye geç
+                            self.pvp_oyuncu1_isim = self.pvp_oyuncu1_isim_temp if self.pvp_oyuncu1_isim_temp else "Oyuncu 1"
+                            self.pvp_isim_input_aktif = 2
+                        else:
+                            # Oyuncu 2 adını kaydet, oyunu başlat
+                            self.pvp_oyuncu2_isim = self.pvp_oyuncu2_isim_temp if self.pvp_oyuncu2_isim_temp else "Oyuncu 2"
+                            # PVP mod seçimine göre bomba modunu ayarla
+                            if self.pvp_bomba_modu:
+                                self.bomba_modu = True
+                            else:
+                                self.bomba_modu = False
+                            self.ayarlari_kaydet()
+                            self.yeni_oyun_basla(pvp=True)
+                    elif olay.key == pygame.K_BACKSPACE:
+                        if self.pvp_isim_input_aktif == 1:
+                            self.pvp_oyuncu1_isim_temp = self.pvp_oyuncu1_isim_temp[:-1]
+                        else:
+                            self.pvp_oyuncu2_isim_temp = self.pvp_oyuncu2_isim_temp[:-1]
+                    elif olay.key == pygame.K_ESCAPE:
+                        # PVP isim girişinden mod seçimine geri dön
+                        self.oyun_durumu = "PVP_MOD_SECIM"
+                    elif olay.unicode and len(olay.unicode) > 0 and olay.unicode.isprintable():
+                        if self.pvp_isim_input_aktif == 1 and len(self.pvp_oyuncu1_isim_temp) < 15:
+                            self.pvp_oyuncu1_isim_temp += olay.unicode
+                        elif self.pvp_isim_input_aktif == 2 and len(self.pvp_oyuncu2_isim_temp) < 15:
+                            self.pvp_oyuncu2_isim_temp += olay.unicode
+                
+                # Bot zorluk seçim kontrolleri
+                elif self.oyun_durumu == "BOT_ZORLUK_SECIM":
+                    if olay.key == pygame.K_1:
+                        self.bot_zorluk = "Kolay"
+                    elif olay.key == pygame.K_2:
+                        self.bot_zorluk = "Orta"
+                    elif olay.key == pygame.K_3:
+                        self.bot_zorluk = "Zor"
+                    elif olay.key == pygame.K_UP:
+                        # Yukarı ok - bir önceki zorluk
+                        if self.bot_zorluk == "Orta":
+                            self.bot_zorluk = "Kolay"
+                            self.menu.bot_zorluk_scroll_offset = 0
+                        elif self.bot_zorluk == "Zor":
+                            self.bot_zorluk = "Orta"
+                            self.menu.bot_zorluk_scroll_offset = -75
+                    elif olay.key == pygame.K_DOWN:
+                        # Aşağı ok - bir sonraki zorluk
+                        if self.bot_zorluk == "Kolay":
+                            self.bot_zorluk = "Orta"
+                            self.menu.bot_zorluk_scroll_offset = -75
+                        elif self.bot_zorluk == "Orta":
+                            self.bot_zorluk = "Zor"
+                            self.menu.bot_zorluk_scroll_offset = -150
+                    elif olay.key == pygame.K_RETURN or olay.key == pygame.K_SPACE:
+                        # Seçilen zorlukla oyunu başlat
+                        self.ayarlari_kaydet()
+                        self.yeni_oyun_basla(pvp=False, bot=True)
+                    elif olay.key == pygame.K_ESCAPE:
+                        self.oyun_durumu = "MODLAR"
+                
+                elif self.oyun_durumu == "PVP_MOD_SECIM":
+                    if olay.key == pygame.K_1:
+                        self.pvp_secili_mod = "Normal"
+                        self.pvp_bomba_modu = False
+                    elif olay.key == pygame.K_2:
+                        self.pvp_secili_mod = "Bomba"
+                        self.pvp_bomba_modu = True
+                    elif olay.key == pygame.K_UP or olay.key == pygame.K_DOWN:
+                        # Toggle arasında geçiş
+                        if self.pvp_secili_mod == "Normal":
+                            self.pvp_secili_mod = "Bomba"
+                            self.pvp_bomba_modu = True
+                        else:
+                            self.pvp_secili_mod = "Normal"
+                            self.pvp_bomba_modu = False
+                    elif olay.key == pygame.K_RETURN or olay.key == pygame.K_SPACE:
+                        # Seçilen modla isim girişine geç
+                        self.pvp_oyuncu1_isim_temp = ""
+                        self.pvp_oyuncu2_isim_temp = ""
+                        self.pvp_isim_input_aktif = 1
+                        self.oyun_durumu = "PVP_ISIM_GIRIS"
+                    elif olay.key == pygame.K_ESCAPE:
+                        self.oyun_durumu = "MODLAR"
+                
+                # Ayarlar kontrolleri
+                elif self.oyun_durumu == "SETTINGS":
+                    if olay.key == pygame.K_1:
+                        self.oyun_durumu = "HIZ_AYAR"
+                        self.menu.ayar_alt_menu = "HIZ"
+                        pygame.mouse.set_visible(True)  # Alt menüde de fareyi göster
+                    elif olay.key == pygame.K_2:
+                        self.oyun_durumu = "ARKAPLAN_AYAR"
+                        self.menu.ayar_alt_menu = "ARKAPLAN"
+                        pygame.mouse.set_visible(True)  # Alt menüde de fareyi göster
+                    elif olay.key == pygame.K_3:
+                        self.oyun_durumu = "YILAN_AYAR"
+                        self.menu.ayar_alt_menu = "YILAN"
+                        self.yilan_ozellestirme_secim = "RENK"
+                        pygame.mouse.set_visible(True)  # Alt menüde de fareyi göster
+                    elif olay.key == pygame.K_4:
+                        self.oyun_durumu = "MUZIK_SECICI"
+                        self.menu.ayar_alt_menu = "MUZIK"
+                        # Mevcut müziklerin indexlerini bul
+                        self.menu_muzik_index = self._muzik_indexi_bul(self.menu_muzik)
+                        self.oyun_muzik_index = self._muzik_indexi_bul(self.oyun_muzik)
+                        self.muzik_secici_scroll = 0
+                        self.muzik_secim_modu = "MENU"
+                        pygame.mouse.set_visible(True)  # Alt menüde de fareyi göster
+                    elif olay.key == pygame.K_m:
+                        self.ana_menuye_don()
+                
+                # Hız ayarları kontrolleri
+                elif self.oyun_durumu == "HIZ_AYAR":
+                    if olay.key == pygame.K_UP:
+                        self.hiz_seviyesi = max(0, self.hiz_seviyesi - 1)
+                        self.ayarlari_kaydet()
+                    elif olay.key == pygame.K_DOWN:
+                        self.hiz_seviyesi = min(len(HIZ_ISIMLERI) - 1, self.hiz_seviyesi + 1)
+                        self.ayarlari_kaydet()
+                
+                # Arka plan ayarları kontrolleri
+                elif self.oyun_durumu == "ARKAPLAN_AYAR":
+                    dosyalar = self.menu.arkaplan_dosyalari_getir()
+                    max_index = len(dosyalar) - 1
+                    
+                    if olay.key == pygame.K_UP:
+                        if self.arkaplan_menu_secim == "MENU":
+                            self.menu_bg_secili_index = max(-1, self.menu_bg_secili_index - 1)
+                        else:
+                            self.oyun_bg_secili_index = max(-1, self.oyun_bg_secili_index - 1)
+                    
+                    elif olay.key == pygame.K_DOWN:
+                        if self.arkaplan_menu_secim == "MENU":
+                            self.menu_bg_secili_index = min(max_index, self.menu_bg_secili_index + 1)
+                        else:
+                            self.oyun_bg_secili_index = min(max_index, self.oyun_bg_secili_index + 1)
+                    
+                    elif olay.key == pygame.K_TAB:
+                        # TAB ile sekmeler arası geçiş
+                        if self.arkaplan_menu_secim == "MENU":
+                            self.arkaplan_menu_secim = "OYUN"
+                        else:
+                            self.arkaplan_menu_secim = "MENU"
+                    
+                    elif olay.key == pygame.K_RETURN:
+                        # Seçimi uygula
+                        if self.arkaplan_menu_secim == "MENU":
+                            if self.menu_bg_secili_index == -1:
+                                self.menu_arkaplan_yolu = None
+                                self.menu_arkaplan = None
+                            else:
+                                dosya = dosyalar[self.menu_bg_secili_index]
+                                self.menu_arkaplan_yolu = os.path.join(ARKAPLAN_KLASORU, dosya)
+                                self.menu_arkaplan = arkaplan_yukle(self.menu_arkaplan_yolu, GENISLIK, YUKSEKLIK)
+                            self.ayarlari_kaydet()
+                        else:
+                            if self.oyun_bg_secili_index == -1:
+                                self.oyun_arkaplan_yolu = None
+                                self.oyun_arkaplan = None
+                            else:
+                                dosya = dosyalar[self.oyun_bg_secili_index]
+                                self.oyun_arkaplan_yolu = os.path.join(ARKAPLAN_KLASORU, dosya)
+                                self.oyun_arkaplan = arkaplan_yukle(self.oyun_arkaplan_yolu, GENISLIK, YUKSEKLIK)
+                            self.ayarlari_kaydet()
+                    
+                    elif olay.key == pygame.K_m:
+                        # Menü arka planı seçimine geç
+                        self.arkaplan_menu_secim = "MENU"
+                    
+                    elif olay.key == pygame.K_o:
+                        # Oyun arka planı seçimine geç
+                        self.arkaplan_menu_secim = "OYUN"
+                
+                # Yılan özelleştirme kontrolleri
+                elif self.oyun_durumu == "YILAN_AYAR":
+                    if self.yilan_ozellestirme_secim == "RENK":
+                        # 2 sütunlu grid: Sol (0-3), Sağ (4-7)
+                        toplam_renk = len(YILAN_RENKLERI)
+                        
+                        if olay.key == pygame.K_UP:
+                            # Yukarı git
+                            if self.yilan_renk > 0:
+                                self.yilan_renk -= 1
+                            self.ayarlari_kaydet()
+                        elif olay.key == pygame.K_DOWN:
+                            # Aşağı git
+                            if self.yilan_renk < toplam_renk - 1:
+                                self.yilan_renk += 1
+                            self.ayarlari_kaydet()
+                        elif olay.key == pygame.K_LEFT:
+                            # Sola git (sağ sütundan sol sütuna)
+                            if self.yilan_renk >= 4:
+                                self.yilan_renk -= 4
+                            self.ayarlari_kaydet()
+                        elif olay.key == pygame.K_RIGHT:
+                            # Sağa git (sol sütundan sağ sütuna)
+                            if self.yilan_renk < 4 and self.yilan_renk + 4 < toplam_renk:
+                                self.yilan_renk += 4
+                            self.ayarlari_kaydet()
+                        elif olay.key == pygame.K_TAB:
+                            # TAB ile bir sonraki sekmeye geç
+                            self.yilan_ozellestirme_secim = "YUZ"
+                        elif olay.key == pygame.K_y:
+                            # Yüz seçimine geç
+                            self.yilan_ozellestirme_secim = "YUZ"
+                        elif olay.key == pygame.K_RETURN:
+                            # Seçimi uygula ve çık
+                            self.oyun_durumu = "SETTINGS"
+                            self.menu.ayar_alt_menu = None
+                    
+                    elif self.yilan_ozellestirme_secim == "YUZ":
+                        if olay.key == pygame.K_UP:
+                            self.yilan_yuz = max(0, self.yilan_yuz - 1)
+                            self.ayarlari_kaydet()
+                        elif olay.key == pygame.K_DOWN:
+                            self.yilan_yuz = min(len(YILAN_YUZLERI) - 1, self.yilan_yuz + 1)
+                            self.ayarlari_kaydet()
+                        elif olay.key == pygame.K_TAB:
+                            # TAB ile bir sonraki sekmeye geç
+                            self.yilan_ozellestirme_secim = "AKSESUAR"
+                        elif olay.key == pygame.K_r:
+                            # Renk seçimine geç
+                            self.yilan_ozellestirme_secim = "RENK"
+                        elif olay.key == pygame.K_RETURN:
+                            # Seçimi uygula ve çık
+                            self.oyun_durumu = "SETTINGS"
+                            self.menu.ayar_alt_menu = None
+                    
+                    elif self.yilan_ozellestirme_secim == "AKSESUAR":
+                        if olay.key == pygame.K_UP:
+                            self.yilan_aksesuar = max(0, self.yilan_aksesuar - 1)
+                            self.ayarlari_kaydet()
+                        elif olay.key == pygame.K_DOWN:
+                            self.yilan_aksesuar = min(len(YILAN_AKSESUARLARI) - 1, self.yilan_aksesuar + 1)
+                            self.ayarlari_kaydet()
+                        elif olay.key == pygame.K_TAB:
+                            # TAB ile ilk sekmeye dön
+                            self.yilan_ozellestirme_secim = "RENK"
+                        elif olay.key == pygame.K_r:
+                            # Renk seçimine geç
+                            self.yilan_ozellestirme_secim = "RENK"
+                        elif olay.key == pygame.K_RETURN:
+                            # Seçimi uygula ve çık
+                            self.oyun_durumu = "SETTINGS"
+                            self.menu.ayar_alt_menu = None
+                
+                # Müzik seçici kontrolleri
+                elif self.oyun_durumu == "MUZIK_SECICI":
+                    # TAB ile sekme değiştir
+                    if olay.key == pygame.K_TAB:
+                        self.muzik_secim_modu = "OYUN" if self.muzik_secim_modu == "MENU" else "MENU"
+                    
+                    # Aktif indexi belirle
+                    if self.muzik_secim_modu == "MENU":
+                        aktif_index = self.menu_muzik_index
+                    else:
+                        aktif_index = self.oyun_muzik_index
+                    
+                    # Müzik listesini al
+                    tum_muzikler = self.menu.muzik_secici_menu_ciz(self.ses_yoneticisi, aktif_index, self.muzik_secici_scroll, self.muzik_secim_modu)
+                    
+                    if olay.key == pygame.K_UP:
+                        aktif_index = max(0, aktif_index - 1)
+                        # Scroll ayarla
+                        if aktif_index < self.muzik_secici_scroll:
+                            self.muzik_secici_scroll = aktif_index
+                        # Indexi kaydet
+                        if self.muzik_secim_modu == "MENU":
+                            self.menu_muzik_index = aktif_index
+                        else:
+                            self.oyun_muzik_index = aktif_index
+                    elif olay.key == pygame.K_DOWN:
+                        aktif_index = min(len(tum_muzikler) - 1, aktif_index + 1)
+                        # Scroll ayarla
+                        if aktif_index >= self.muzik_secici_scroll + 6:
+                            self.muzik_secici_scroll = aktif_index - 5
+                        # Indexi kaydet
+                        if self.muzik_secim_modu == "MENU":
+                            self.menu_muzik_index = aktif_index
+                        else:
+                            self.oyun_muzik_index = aktif_index
+                    elif olay.key == pygame.K_RETURN:
+                        # Seçili müziği çal ve kaydet
+                        if aktif_index < len(tum_muzikler):
+                            muzik_adi_veya_yol = tum_muzikler[aktif_index][1]
+                            self.ses_yoneticisi.muzik_cal(muzik_adi_veya_yol)
+                            # Seçili müziği kaydet
+                            if self.muzik_secim_modu == "MENU":
+                                self.menu_muzik = muzik_adi_veya_yol
+                            else:
+                                self.oyun_muzik = muzik_adi_veya_yol
+                            self.ayarlari_kaydet()
+                
+                # Oyun kontrolleri
+                elif self.oyun_durumu == "PLAYING":
+                    if olay.key == pygame.K_p:
+                        # Pause/Resume
+                        self.oyun_duraklatildi = not self.oyun_duraklatildi
+                        if self.oyun_duraklatildi:
+                            pygame.mouse.set_visible(True)  # Pause'da fareyi göster
+                        else:
+                            pygame.mouse.set_visible(False)  # Devam ederken fareyi gizle
+                    elif not self.oyun_duraklatildi:
+                        if self.pvp_modu:
+                            # PVP Modu - iki oyuncu kontrolü
+                            # Oyuncu 1 (Mavi) - WASD
+                            if olay.key == pygame.K_w:
+                                self.yilan.yon_degistir((0, -1))
+                            elif olay.key == pygame.K_s:
+                                self.yilan.yon_degistir((0, 1))
+                            elif olay.key == pygame.K_a:
+                                self.yilan.yon_degistir((-1, 0))
+                            elif olay.key == pygame.K_d:
+                                self.yilan.yon_degistir((1, 0))
+                            # Oyuncu 1 hız boost (Sol Shift)
+                            elif olay.key == pygame.K_LSHIFT:
+                                if self.p1_hiz_suresi > 0 and not self.p1_shift_basmaya_basladi:
+                                    self.p1_shift_basmaya_basladi = True
+                                    self.p1_hiz_boost_aktif = True
+                            
+                            # Oyuncu 2 (Kırmızı) - Ok Tuşları
+                            elif olay.key == pygame.K_UP:
+                                self.yilan2.yon_degistir((0, -1))
+                            elif olay.key == pygame.K_DOWN:
+                                self.yilan2.yon_degistir((0, 1))
+                            elif olay.key == pygame.K_LEFT:
+                                self.yilan2.yon_degistir((-1, 0))
+                            elif olay.key == pygame.K_RIGHT:
+                                self.yilan2.yon_degistir((1, 0))
+                            # Oyuncu 2 hız boost (Sağ Shift)
+                            elif olay.key == pygame.K_RSHIFT:
+                                if self.p2_hiz_suresi > 0 and not self.p2_shift_basmaya_basladi:
+                                    self.p2_shift_basmaya_basladi = True
+                                    self.p2_hiz_boost_aktif = True
+                        else:
+                            # Normal mod - tek oyuncu
+                            # Sadece pause değilse hareket kontrolleri
+                            if olay.key == pygame.K_UP or olay.key == pygame.K_w:
+                                self.yilan.yon_degistir((0, -1))
+                            elif olay.key == pygame.K_DOWN or olay.key == pygame.K_s:
+                                self.yilan.yon_degistir((0, 1))
+                            elif olay.key == pygame.K_LEFT or olay.key == pygame.K_a:
+                                self.yilan.yon_degistir((-1, 0))
+                            elif olay.key == pygame.K_RIGHT or olay.key == pygame.K_d:
+                                self.yilan.yon_degistir((1, 0))
+            
+            # KEYUP olayı - Shift bırakıldığında
+            if olay.type == pygame.KEYUP:
+                if self.oyun_durumu == "PLAYING" and not self.oyun_duraklatildi and self.pvp_modu:
+                    # Oyuncu 1 Shift bıraktı
+                    if olay.key == pygame.K_LSHIFT:
+                        if self.p1_shift_basmaya_basladi:
+                            self.p1_shift_basmaya_basladi = False
+                            self.p1_hiz_boost_aktif = False
+                    # Oyuncu 2 Shift bıraktı
+                    elif olay.key == pygame.K_RSHIFT:
+                        if self.p2_shift_basmaya_basladi:
+                            self.p2_shift_basmaya_basladi = False
+                            self.p2_hiz_boost_aktif = False
+                
+                # Oyun bitti kontrolleri
+                elif self.oyun_durumu == "GAME_OVER":
+                    if olay.key == pygame.K_SPACE:
+                        # PVP/Bot modunda kaldıysa aynı modda devam et
+                        self.yeni_oyun_basla(pvp=self.pvp_modu, bot=self.bot_modu)
+                    elif olay.key == pygame.K_m:
+                        self.ana_menuye_don()
+
+    def guncelle(self):
+        """Oyun mantığını günceller"""
+        if self.oyun_durumu == "PLAYING":
+            # Oyun duraklatıldıysa güncelleme yapma
+            if self.oyun_duraklatildi:
+                return
+            
+            # Patlama animasyonu oynanıyorsa
+            if self.patlama_animasyon_sayaci > 0:
+                self.patlama_animasyon_sayaci += 1
+                
+                # Ekran titremesi efekti (ilk yarıda güçlü)
+                titreme_gucu = max(0, 10 - (self.patlama_animasyon_sayaci // 3))
+                self.ekran_titreme_x = random.randint(-titreme_gucu, titreme_gucu)
+                self.ekran_titreme_y = random.randint(-titreme_gucu, titreme_gucu)
+                
+                if self.patlama_animasyon_sayaci >= PATLAMA_SÜRESI:
+                    # Animasyon bitti, oyun bitti işlemlerini yap
+                    self._oyun_bitti_islemleri("bomba")
+                    self.patlama_animasyon_sayaci = 0
+                    self.patlama_pozisyon = None
+                    self.ekran_titreme_x = 0
+                    self.ekran_titreme_y = 0
+                return  # Patlama sırasında diğer güncellemeleri yapma
+            
+            # Bomba modu aktifse bombaları güncelle
+            if self.bomba_modu:
+                self.bomba_yoneticisi.guncelle()
+                
+                # Sahte yem kontrolü - yılan ile aynı hizada ve mesafe kontrolü
+                if self.sahte_yem and not self.sahte_yem.bombaya_donustu:
+                    # PVP bomba modunda her iki yılanı da kontrol et
+                    yilanlar = [self.yilan]
+                    if (self.pvp_modu or self.bot_modu) and self.yilan2 and self.bomba_modu:
+                        yilanlar.append(self.yilan2)
+                    
+                    for yilan in yilanlar:
+                        yilan_x, yilan_y = yilan.kafa_pozisyonu()
+                        ayni_hizada = self.sahte_yem.yilan_ile_ayni_hizada_mi(yilan_x, yilan_y)
+                        mesafe = self.sahte_yem.yilan_mesafesi(yilan_x, yilan_y)
+                        # PVP bomba modunda 1 blok, normal modda 2 blok
+                        donusum_mesafesi = 1 if (self.pvp_modu or self.bot_modu) and self.bomba_modu else 2
+                        if ayni_hizada and mesafe <= donusum_mesafesi:
+                            self.sahte_yem.bombaya_donustur()
+                            break
+            
+            # Yılanın kuyruk pozisyonundan parçacık ekle - yılanın rengine göre
+            # Optimize: Her frame değil, her 2 frame'de bir parçacık ekle
+            if len(self.yilan.pozisyonlar) > 0 and pygame.time.get_ticks() % 2 == 0:
+                # Kuyruğun son parçasından parçacık
+                kuyruk_x, kuyruk_y = self.yilan.pozisyonlar[-1]
+                # Yılanın orta rengini kullan (en belirgin renk)
+                yilan_rengi = self.yilan.renk_orta
+                self.yilan_izi_efekti.parcacik_ekle(kuyruk_x, kuyruk_y, yilan_rengi)
+            
+            # PVP ve Bot modunda 2. yılanın parçacıklarını da ekle
+            if (self.pvp_modu or self.bot_modu) and self.yilan2 and len(self.yilan2.pozisyonlar) > 0 and pygame.time.get_ticks() % 2 == 0:
+                kuyruk_x2, kuyruk_y2 = self.yilan2.pozisyonlar[-1]
+                yilan2_rengi = self.yilan2.renk_orta
+                self.yilan_izi_efekti.parcacik_ekle(kuyruk_x2, kuyruk_y2, yilan2_rengi)
+            
+            # Dondurma sayacını azalt
+            if self.dondurma_sayaci > 0:
+                self.dondurma_sayaci -= 1
+            
+            # PVP özel yem spawn sistemi (skor bazlı)
+            if (self.pvp_modu or self.bot_modu):
+                # Oyuncu 1 için skor kontrolü
+                p1_skor = self.yilan.skor
+                if p1_skor // self.ozel_yem_skor_araligi > self.p1_son_ozel_yem_skoru // self.ozel_yem_skor_araligi:
+                    # 50'nin katına ulaştı ve henüz özel yemi yok
+                    if not self.pvp_ozel_yem_p1:
+                        self._pvp_ozel_yem_spawn_icin(1)
+                        self.p1_son_ozel_yem_skoru = p1_skor
+                
+                # Oyuncu 2 için skor kontrolü
+                if self.yilan2:
+                    p2_skor = self.yilan2.skor
+                    if p2_skor // self.ozel_yem_skor_araligi > self.p2_son_ozel_yem_skoru // self.ozel_yem_skor_araligi:
+                        # 50'nin katına ulaştı ve henüz özel yemi yok
+                        if not self.pvp_ozel_yem_p2:
+                            self._pvp_ozel_yem_spawn_icin(2)
+                            self.p2_son_ozel_yem_skoru = p2_skor
+            
+            # Hız süresini azalt
+            if self.p1_hiz_suresi > 0:
+                self.p1_hiz_suresi = max(0, self.p1_hiz_suresi - 1/30)  # 30 FPS'de saniye azalt
+                # Süre bitti ve hız boost aktifse devre dışı bırak
+                if self.p1_hiz_suresi <= 0:
+                    self.p1_hiz_boost_aktif = False
+                    self.p1_shift_basmaya_basladi = False
+            if self.p2_hiz_suresi > 0:
+                self.p2_hiz_suresi = max(0, self.p2_hiz_suresi - 1/30)
+                # Süre bitti ve hız boost aktifse devre dışı bırak
+                if self.p2_hiz_suresi <= 0:
+                    self.p2_hiz_boost_aktif = False
+                    self.p2_shift_basmaya_basladi = False
+            
+            # Hareket sayacını artır
+            self.hareket_sayaci += 1
+            
+            # Dondurma varsa her 2 frame'de bir hareket et (yavaşlat)
+            hareket_orani = 2 if self.dondurma_sayaci > 0 else 1
+            
+            # PVP hız boost kontrolü
+            p1_hizli = self.p1_hiz_boost_aktif and self.p1_hiz_suresi > 0
+            p2_hizli = self.p2_hiz_boost_aktif and self.p2_hiz_suresi > 0
+            
+            if self.hareket_sayaci % hareket_orani == 0:
+                # Bot modu - AI karar verme
+                if self.bot_modu and self.yilan2 and isinstance(self.yilan2, AIYilan):
+                    # Bomba pozisyonlarını al
+                    bomba_poz = self.bomba_yoneticisi.bomba_pozisyonlari() if self.bomba_modu else None
+                    # Rakip pozisyonlarını al
+                    rakip_poz = self.yilan.pozisyonlar if self.yilan else None
+                    # AI karar ver
+                    self.yilan2.ai_karar_ver(self.yem.pozisyon, bomba_poz, rakip_poz)
+                
+                # Oyuncu 1 hareketi (normal veya hızlı)
+                self.yilan.hareket_et()
+                if p1_hizli and (self.pvp_modu or self.bot_modu):
+                    # Hız boost aktif - ekstra hareket
+                    self.yilan.hareket_et()
+                
+                # PVP veya Bot modunda 2. yılanı da hareket ettir
+                if (self.pvp_modu or self.bot_modu) and self.yilan2:
+                    self.yilan2.hareket_et()
+                    if p2_hizli:
+                        # Hız boost aktif - ekstra hareket
+                        self.yilan2.hareket_et()
+
+            # Bomba çarpışma kontrolü
+            if self.bomba_modu:
+                # Oyuncu 1 bomba kontrolü
+                yilan_x, yilan_y = self.yilan.kafa_pozisyonu()
+                
+                # Normal bombalara çarptı mı?
+                carpan_bomba = self.bomba_yoneticisi.carpma_kontrol(yilan_x, yilan_y)
+                if carpan_bomba:
+                    # Kalkan varsa kurtul
+                    if (self.pvp_modu or self.bot_modu) and self._pvp_kalkan_kullan(1):
+                        # Kalkan kullanıldı, bombayı sil ama pat la tma yok
+                        self.bomba_yoneticisi.bombalar.remove(carpan_bomba)
+                        self.puan_efekti.metin_ekle(yilan_x + HUCRE_BOYUTU // 2, yilan_y, "KALKAN!")
+                        self.ses_yoneticisi.efekt_cal("yem_ye")  # Başarı sesi
+                    else:
+                        # Patlama animasyonunu başlat
+                        self.patlama_animasyon_sayaci = 1
+                        self.patlama_pozisyon = (yilan_x, yilan_y)
+                        self.yem_yeme_efekti.efekt_ekle(yilan_x, yilan_y, BOMBA_PARLAMA_RENK)
+                        self.ses_yoneticisi.efekt_cal("bomba")
+                        
+                        # PVP bomba modunda diğer oyuncu kazanır
+                        if self.pvp_modu:
+                            self.pvp_kazanan = self.pvp_oyuncu2_isim
+                            self.oyun_bitti = True
+                            self.oyun_durumu = "GAME_OVER"
+                        return
+                
+                # Sahte yeme (bombaya dönüşmüş) çarptı mı?
+                if self.sahte_yem and self.sahte_yem.bombaya_donustu:
+                    if (yilan_x, yilan_y) == self.sahte_yem.pozisyon:
+                        # Kalkan varsa kurtul
+                        if (self.pvp_modu or self.bot_modu) and self._pvp_kalkan_kullan(1):
+                            # Kalkan kullanıldı, sahte yemi sil
+                            self.sahte_yem = None
+                            self.puan_efekti.metin_ekle(yilan_x + HUCRE_BOYUTU // 2, yilan_y, "KALKAN!")
+                            self.ses_yoneticisi.efekt_cal("yem_ye")
+                        else:
+                            # Patlama animasyonunu başlat
+                            self.patlama_animasyon_sayaci = 1
+                            self.patlama_pozisyon = (yilan_x, yilan_y)
+                            self.yem_yeme_efekti.efekt_ekle(yilan_x, yilan_y, BOMBA_PARLAMA_RENK)
+                            self.ses_yoneticisi.efekt_cal("bomba")
+                            
+                            # PVP bomba modunda diğer oyuncu kazanır
+                            if self.pvp_modu:
+                                self.pvp_kazanan = self.pvp_oyuncu2_isim
+                                self.oyun_bitti = True
+                                self.oyun_durumu = "GAME_OVER"
+                            return
+                
+                # Oyuncu 2 bomba kontrolü (PVP veya Bot modunda)
+                if (self.pvp_modu or self.bot_modu) and self.yilan2:
+                    yilan2_x, yilan2_y = self.yilan2.kafa_pozisyonu()
+                    
+                    # Normal bombalara çarptı mı?
+                    carpan_bomba2 = self.bomba_yoneticisi.carpma_kontrol(yilan2_x, yilan2_y)
+                    if carpan_bomba2:
+                        # Kalkan varsa kurtul
+                        if self._pvp_kalkan_kullan(2):
+                            # Kalkan kullanıldı, bombayı sil
+                            self.bomba_yoneticisi.bombalar.remove(carpan_bomba2)
+                            self.puan_efekti.metin_ekle(yilan2_x + HUCRE_BOYUTU // 2, yilan2_y, "KALKAN!")
+                            self.ses_yoneticisi.efekt_cal("yem_ye")
+                        else:
+                            # Patlama animasyonunu başlat
+                            self.patlama_animasyon_sayaci = 1
+                            self.patlama_pozisyon = (yilan2_x, yilan2_y)
+                            self.yem_yeme_efekti.efekt_ekle(yilan2_x, yilan2_y, BOMBA_PARLAMA_RENK)
+                            self.ses_yoneticisi.efekt_cal("bomba")
+                            
+                            # PVP bomba modunda diğer oyuncu kazanır
+                            if self.pvp_modu:
+                                self.pvp_kazanan = self.pvp_oyuncu1_isim
+                                self.oyun_bitti = True
+                                self.oyun_durumu = "GAME_OVER"
+                            return
+                    
+                    # Sahte yeme (bombaya dönüşmüş) çarptı mı?
+                    if self.sahte_yem and self.sahte_yem.bombaya_donustu:
+                        if (yilan2_x, yilan2_y) == self.sahte_yem.pozisyon:
+                            # Kalkan varsa kurtul
+                            if self._pvp_kalkan_kullan(2):
+                                # Kalkan kullanıldı, sahte yemi sil
+                                self.sahte_yem = None
+                                self.puan_efekti.metin_ekle(yilan2_x + HUCRE_BOYUTU // 2, yilan2_y, "KALKAN!")
+                                self.ses_yoneticisi.efekt_cal("yem_ye")
+                            else:
+                                # Patlama animasyonunu başlat
+                                self.patlama_animasyon_sayaci = 1
+                                self.patlama_pozisyon = (yilan2_x, yilan2_y)
+                                self.yem_yeme_efekti.efekt_ekle(yilan2_x, yilan2_y, BOMBA_PARLAMA_RENK)
+                                self.ses_yoneticisi.efekt_cal("bomba")
+                                
+                                # PVP bomba modunda diğer oyuncu kazanır
+                                if self.pvp_modu:
+                                    self.pvp_kazanan = self.pvp_oyuncu1_isim
+                                    self.oyun_bitti = True
+                                    self.oyun_durumu = "GAME_OVER"
+                                return
+
+            # Yemi yedi mi?
+            # Normal yem yeme
+            yem_yiyen = None  # Hangi yılan yedi
+            
+            if self.yilan.kafa_pozisyonu() == self.yem.pozisyon:
+                yem_yiyen = self.yilan
+            elif (self.pvp_modu or self.bot_modu) and self.yilan2 and self.yilan2.kafa_pozisyonu() == self.yem.pozisyon:
+                yem_yiyen = self.yilan2
+            
+            if yem_yiyen:
+                # Yem yeme efekti
+                yem_x, yem_y = self.yem.pozisyon
+                # Meyve rengini al
+                meyve_renkleri = [
+                    KIRMIZI,      # Elma
+                    (255, 165, 0), # Portakal
+                    (148, 63, 231), # Üzüm
+                    (220, 20, 60),  # Kiraz
+                    (255, 225, 53)  # Muz
+                ]
+                meyve_rengi = meyve_renkleri[self.yem.meyve_turu]
+                self.yem_yeme_efekti.efekt_ekle(yem_x, yem_y, meyve_rengi)
+                
+                # Ses efekti
+                self.ses_yoneticisi.efekt_cal("yem_ye")
+                
+                # Puan efekti
+                self.puan_efekti.metin_ekle(
+                    yem_x + HUCRE_BOYUTU // 2,
+                    yem_y,
+                    10
+                )
+                
+                yem_yiyen.buyut()
+                
+                # İstatistik güncelle (sadece PVP ve Bot olmayan modda)
+                if not self.pvp_modu and not self.bot_modu:
+                    self.istatistik_takipci.yem_yenildi()
+                    
+                    # Başarımlar
+                    self.basarim_yoneticisi.arttir("yemci", 1)
+                    self.basarim_yoneticisi.arttir("acikmis", 1)
+                    self.basarim_yoneticisi.arttir("usta_avcı", 1)
+                    self.basarim_yoneticisi.ilerleme_kaydet("kucuk_yilan", len(self.yilan.pozisyonlar))
+                    self.basarim_yoneticisi.ilerleme_kaydet("orta_yilan", len(self.yilan.pozisyonlar))
+                    self.basarim_yoneticisi.ilerleme_kaydet("dev_yilan", len(self.yilan.pozisyonlar))
+                
+                # Özel yem spawn şansı (PVP ve Bot'da yok)
+                if not self.pvp_modu and not self.bot_modu and random.random() < OZEL_YEM_SPAWN_SANSI and not self.ozel_yem_aktif:
+                    # Rastgele özel yem türü
+                    turler = ["altin_elma", "elmas", "zehirli", "dondurucu"]
+                    secilen_tur = random.choice(turler)
+                    self.ozel_yem = OzelYem(secilen_tur)
+                    self.ozel_yem.rastgele_konumla()
+                    # Yılan ve yemlerden uzak olsun
+                    yasak_poz = set(self.yilan.pozisyonlar)
+                    yasak_poz.add(self.yem.pozisyon)
+                    while self.ozel_yem.pozisyon in yasak_poz:
+                        self.ozel_yem.rastgele_konumla()
+                    self.ozel_yem_aktif = True
+                
+                # Her 100 skorda 1 bomba ekle (bomba modunda ve PVP değilse)
+                if self.bomba_modu and not self.pvp_modu:
+                    yeni_skor = self.yilan.skor
+                    # 100'ün katlarını kontrol et
+                    if yeni_skor // 100 > self.son_bomba_eklenen_skor // 100:
+                        # Yeni bomba ekle
+                        yasak_poz = set(self.yilan.pozisyonlar)
+                        yasak_poz.add(self.yem.pozisyon)
+                        yasak_poz.update(self.bomba_yoneticisi.bomba_pozisyonlari())
+                        
+                        # Rastgele pozisyon bul
+                        for _ in range(50):  # Max 50 deneme
+                            x = random.randint(0, (GENISLIK // HUCRE_BOYUTU) - 1) * HUCRE_BOYUTU
+                            y = random.randint(0, (YUKSEKLIK // HUCRE_BOYUTU) - 1) * HUCRE_BOYUTU
+                            if (x, y) not in yasak_poz:
+                                from bomb import Bomb
+                                yeni_bomba = Bomb(x, y)
+                                self.bomba_yoneticisi.bombalar.append(yeni_bomba)
+                                break
+                        
+                        self.son_bomba_eklenen_skor = yeni_skor
+                
+                # Sahte yem varsa sil (gerçek yemi yedi)
+                if self.sahte_yem:
+                    self.sahte_yem = None
+                
+                # Bomba modunda: Mevcut bombaları rastgele yerlere taşı
+                if self.bomba_modu:
+                    yasak_poz = set(self.yilan.pozisyonlar)
+                    yasak_poz.add(self.yem.pozisyon)
+                    # PVP bomba modunda ikinci yılanı da ekle
+                    if (self.pvp_modu or self.bot_modu) and self.yilan2:
+                        yasak_poz.update(self.yilan2.pozisyonlar)
+                    if self.sahte_yem:
+                        yasak_poz.add(self.sahte_yem.pozisyon)
+                    # PVP bomba modunda 3 blok minimum mesafe
+                    min_mesafe = 3 if (self.pvp_modu or self.bot_modu) else 0
+                    self.bomba_yoneticisi.bombalari_yerlestir(yasak_poz, min_mesafe)
+                
+                # Yeni yem spawn - bomba modu için kontrol
+                self.yem_sayaci += 1
+                if self.bomba_modu and not self.pvp_modu and self.yem_sayaci >= SAHTE_YEM_ORANI:
+                    # 2 yem spawn: 1 gerçek, 1 sahte
+                    self.yem = Yem(GENISLIK, YUKSEKLIK, sahte_mi=False)
+                    self.sahte_yem = Yem(GENISLIK, YUKSEKLIK, sahte_mi=True)
+                    
+                    # Bomba ve yılan pozisyonlarından uzak olsun
+                    yasak_pozisyonlar = set(self.yilan.pozisyonlar)
+                    if self.bomba_modu:
+                        yasak_pozisyonlar.update(self.bomba_yoneticisi.bomba_pozisyonlari())
+                    
+                    # İki yem birbirine çok yakın olmasın
+                    while (self.yem.pozisyon in yasak_pozisyonlar or 
+                           abs(self.yem.pozisyon[0] - self.sahte_yem.pozisyon[0]) + 
+                           abs(self.yem.pozisyon[1] - self.sahte_yem.pozisyon[1]) < 5 * HUCRE_BOYUTU):
+                        self.yem.rastgele_konumla()
+                    
+                    while (self.sahte_yem.pozisyon in yasak_pozisyonlar or 
+                           self.sahte_yem.pozisyon == self.yem.pozisyon or
+                           abs(self.yem.pozisyon[0] - self.sahte_yem.pozisyon[0]) + 
+                           abs(self.yem.pozisyon[1] - self.sahte_yem.pozisyon[1]) < 5 * HUCRE_BOYUTU):
+                        self.sahte_yem.rastgele_konumla()
+                    
+                    self.yem_sayaci = 0
+                else:
+                    # Sadece gerçek yem - PVP ve Bot'ta her iki yılanı da kontrol et
+                    yasak_poz = set(self.yilan.pozisyonlar)
+                    if (self.pvp_modu or self.bot_modu) and self.yilan2:
+                        yasak_poz.update(self.yilan2.pozisyonlar)
+                    
+                    self.yem.rastgele_konumla()
+                    while self.yem.pozisyon in yasak_poz:
+                        self.yem.rastgele_konumla()
+            
+            # Sahte yemi yedi mi? (Sahte yem bombaya dönüşmemişse yenilebilir ama puan yok)
+            if self.sahte_yem and not self.sahte_yem.bombaya_donustu:
+                if self.yilan.kafa_pozisyonu() == self.sahte_yem.pozisyon:
+                    # Sahte yemi sil (puan yok, büyüme yok)
+                    self.sahte_yem = None
+            
+            # Özel yem yedi mi?
+            if self.ozel_yem_aktif and self.yilan.kafa_pozisyonu() == self.ozel_yem.pozisyon:
+                ozel_puan = self.ozel_yem.puan_dondur()
+                yem_x, yem_y = self.ozel_yem.pozisyon
+                
+                # Puan efekti
+                self.puan_efekti.metin_ekle(
+                    yem_x + HUCRE_BOYUTU // 2,
+                    yem_y,
+                    ozel_puan
+                )
+                
+                # Yem türüne göre işlem
+                if self.ozel_yem.tur == "altin_elma":
+                    self.yilan.skor += ozel_puan
+                    self.yilan.buyut()
+                    self.ses_yoneticisi.efekt_cal("altin_elma")
+                    self.istatistik_takipci.yem_yenildi("altin_elma")
+                    self.basarim_yoneticisi.arttir("altin_avcisi", 1)
+                
+                elif self.ozel_yem.tur == "elmas":
+                    self.yilan.skor += ozel_puan
+                    self.yilan.buyut()
+                    self.yilan.buyut()  # 2 kere büyüt
+                    self.ses_yoneticisi.efekt_cal("elmas")
+                    self.istatistik_takipci.yem_yenildi("elmas")
+                    self.basarim_yoneticisi.arttir("elmas_toplama", 1)
+                
+                elif self.ozel_yem.tur == "zehirli":
+                    self.yilan.skor = max(0, self.yilan.skor + ozel_puan)  # Skor 0'ın altına düşmesin
+                    # Küçült (varsa)
+                    if len(self.yilan.pozisyonlar) > 3:
+                        self.yilan.pozisyonlar.pop()
+                
+                elif self.ozel_yem.tur == "dondurucu":
+                    self.yilan.skor += ozel_puan
+                    self.dondurma_sayaci = DONDURUCU_SURE
+                    self.ses_yoneticisi.efekt_cal("dondur")
+                
+                self.ozel_yem = None
+                self.ozel_yem_aktif = False
+            
+            # PVP özel yem kontrolü
+            if (self.pvp_modu or self.bot_modu):
+                # Oyuncu 1'e ait özel yem
+                if self.pvp_ozel_yem_p1:
+                    yem_yiyen = None
+                    if self.yilan.kafa_pozisyonu() == self.pvp_ozel_yem_p1.pozisyon:
+                        yem_yiyen = "p1"  # Sahibi yedi
+                    elif self.yilan2 and self.yilan2.kafa_pozisyonu() == self.pvp_ozel_yem_p1.pozisyon:
+                        yem_yiyen = "p2"  # Diğer oyuncu yedi
+                    
+                    if yem_yiyen:
+                        yem_x, yem_y = self.pvp_ozel_yem_p1.pozisyon
+                        
+                        if yem_yiyen == "p1":
+                            # Sahibi yedi - yetenek ver
+                            if self.pvp_ozel_yem_p1.tur == "kalkan":
+                                self.p1_kalkan_aktif = True
+                                self.puan_efekti.metin_ekle(yem_x + HUCRE_BOYUTU // 2, yem_y, "KALKAN!")
+                            elif self.pvp_ozel_yem_p1.tur == "hiz":
+                                self.p1_hiz_suresi = 5.0  # 5 saniye hız
+                                self.puan_efekti.metin_ekle(yem_x + HUCRE_BOYUTU // 2, yem_y, "HIZ!")
+                            # Küçük puan bonusu
+                            self.yilan.skor += 15
+                            self.yilan.buyut()
+                        else:
+                            # Diğer oyuncu yedi - sadece normal puan
+                            self.yilan2.skor += 10
+                            self.yilan2.buyut()
+                            self.puan_efekti.metin_ekle(yem_x + HUCRE_BOYUTU // 2, yem_y, "+10")
+                        
+                        # Efekt ve ses
+                        yilan_rengi = YILAN_RENKLERI[self.yilan.renk_index][1]  # [1] = ana renk
+                        self.yem_yeme_efekti.efekt_ekle(yem_x, yem_y, yilan_rengi)
+                        self.ses_yoneticisi.efekt_cal("yem_ye")
+                        
+                        # Yemi sil
+                        self.pvp_ozel_yem_p1 = None
+                
+                # Oyuncu 2'ye ait özel yem
+                if self.pvp_ozel_yem_p2:
+                    yem_yiyen = None
+                    if self.yilan.kafa_pozisyonu() == self.pvp_ozel_yem_p2.pozisyon:
+                        yem_yiyen = "p1"  # Diğer oyuncu yedi
+                    elif self.yilan2 and self.yilan2.kafa_pozisyonu() == self.pvp_ozel_yem_p2.pozisyon:
+                        yem_yiyen = "p2"  # Sahibi yedi
+                    
+                    if yem_yiyen:
+                        yem_x, yem_y = self.pvp_ozel_yem_p2.pozisyon
+                        
+                        if yem_yiyen == "p2":
+                            # Sahibi yedi - yetenek ver
+                            if self.pvp_ozel_yem_p2.tur == "kalkan":
+                                self.p2_kalkan_aktif = True
+                                self.puan_efekti.metin_ekle(yem_x + HUCRE_BOYUTU // 2, yem_y, "KALKAN!")
+                            elif self.pvp_ozel_yem_p2.tur == "hiz":
+                                self.p2_hiz_suresi = 5.0  # 5 saniye hız
+                                self.puan_efekti.metin_ekle(yem_x + HUCRE_BOYUTU // 2, yem_y, "HIZ!")
+                            # Küçük puan bonusu
+                            self.yilan2.skor += 15
+                            self.yilan2.buyut()
+                        else:
+                            # Diğer oyuncu yedi - sadece normal puan
+                            self.yilan.skor += 10
+                            self.yilan.buyut()
+                            self.puan_efekti.metin_ekle(yem_x + HUCRE_BOYUTU // 2, yem_y, "+10")
+                        
+                        # Efekt ve ses
+                        yilan_rengi = YILAN_RENKLERI[self.yilan2.renk_index][1]  # [1] = ana renk
+                        self.yem_yeme_efekti.efekt_ekle(yem_x, yem_y, yilan_rengi)
+                        self.ses_yoneticisi.efekt_cal("yem_ye")
+                        
+                        # Yemi sil
+                        self.pvp_ozel_yem_p2 = None
+
+            # Kendine çarptı mı?
+            # Oyun zaten bittiyse (örn: bomba patladı) çarpışma kontrolü yapma
+            if self.oyun_durumu == "GAME_OVER" or self.oyun_bitti:
+                return
+            
+            if self.pvp_modu or self.bot_modu:
+                # PVP/Bot Modu - her iki yılanın çarpışmalarını kontrol et
+                yilan1_carpti = self.yilan.carpma_kontrolu()
+                yilan2_carpti = self.yilan2.carpma_kontrolu() if self.yilan2 else False
+                
+                # Karşı yılana çarpma kontrolü
+                yilan1_kafa = tuple(self.yilan.kafa_pozisyonu())
+                yilan2_kafa = tuple(self.yilan2.kafa_pozisyonu()) if self.yilan2 else None
+                
+                # Yılan 1, Yılan 2'nin vücuduna çarptı mı? (Hız boost varsa geçebilir)
+                yilan2_vucut = [tuple(pos) for pos in self.yilan2.pozisyonlar[1:]] if self.yilan2 else []
+                if self.p1_hiz_boost_aktif and self.p1_hiz_suresi > 0:
+                    # Hız boost aktif - rakibin içinden geçebilir
+                    yilan1_rakibe_carpti = False
+                else:
+                    yilan1_rakibe_carpti = yilan1_kafa in yilan2_vucut
+                
+                # Yılan 2, Yılan 1'in vücuduna çarptı mı? (Hız boost varsa geçebilir)
+                yilan1_vucut = [tuple(pos) for pos in self.yilan.pozisyonlar[1:]]
+                if self.p2_hiz_boost_aktif and self.p2_hiz_suresi > 0:
+                    # Hız boost aktif - rakibin içinden geçebilir
+                    yilan2_rakibe_carpti = False
+                else:
+                    yilan2_rakibe_carpti = yilan2_kafa in yilan1_vucut if yilan2_kafa else False
+                
+                # Kafalar çarpıştı mı?
+                kafalar_carpisti = yilan1_kafa == yilan2_kafa if yilan2_kafa else False
+                
+                # Kalkan kontrolü
+                if yilan1_carpti or yilan1_rakibe_carpti:
+                    # Oyuncu 1 çarptı - kalkan varsa kurtul
+                    if self._pvp_kalkan_kullan(1):
+                        self.puan_efekti.metin_ekle(yilan1_kafa[0] + HUCRE_BOYUTU // 2, yilan1_kafa[1], "KALKAN!")
+                        self.ses_yoneticisi.efekt_cal("yem_ye")
+                        yilan1_carpti = False
+                        yilan1_rakibe_carpti = False
+                
+                if yilan2_carpti or yilan2_rakibe_carpti:
+                    # Oyuncu 2 çarptı - kalkan varsa kurtul
+                    if self._pvp_kalkan_kullan(2):
+                        self.puan_efekti.metin_ekle(yilan2_kafa[0] + HUCRE_BOYUTU // 2, yilan2_kafa[1], "KALKAN!")
+                        self.ses_yoneticisi.efekt_cal("yem_ye")
+                        yilan2_carpti = False
+                        yilan2_rakibe_carpti = False
+                
+                # Kazananı belirle
+                if kafalar_carpisti:
+                    # Kafa kafaya çarpışma - skora göre karar ver
+                    p1_skor = self.yilan.skor
+                    p2_skor = self.yilan2.skor if self.yilan2 else 0
+                    
+                    if p1_skor > p2_skor:
+                        # Oyuncu 1 daha yüksek skorla kazandı
+                        if self.bot_modu:
+                            self.pvp_kazanan = "Sen"
+                        else:
+                            self.pvp_kazanan = self.pvp_oyuncu1_isim
+                        self._oyun_bitti_islemleri("pvp_oyuncu1_kazandi" if self.pvp_modu else "oyuncu_kazandi")
+                    elif p2_skor > p1_skor:
+                        # Oyuncu 2 daha yüksek skorla kazandı
+                        if self.bot_modu:
+                            self.pvp_kazanan = f"Bot ({self.bot_zorluk})"
+                        else:
+                            self.pvp_kazanan = self.pvp_oyuncu2_isim
+                        self._oyun_bitti_islemleri("pvp_oyuncu2_kazandi" if self.pvp_modu else "bot_kazandi")
+                    else:
+                        # Skorlar eşit - berabere
+                        if self.bot_modu:
+                            self.pvp_kazanan = "Berabere"
+                        else:
+                            self.pvp_kazanan = "Berabere"
+                        self._oyun_bitti_islemleri("pvp_berabere" if self.pvp_modu else "bot_berabere")
+                elif yilan1_carpti or yilan1_rakibe_carpti:
+                    # Yılan 1 (Sen) çarptı veya rakibe çarptı - Sen kaybettin
+                    if self.bot_modu:
+                        self.pvp_kazanan = "Bot (Turuncu)"
+                    else:
+                        self.pvp_kazanan = self.pvp_oyuncu2_isim
+                    self._oyun_bitti_islemleri("pvp_oyuncu2_kazandi" if self.pvp_modu else "bot_kazandi")
+                elif yilan2_carpti or yilan2_rakibe_carpti:
+                    # Yılan 2 (Bot) çarptı veya rakibe çarptı - Bot kaybetti, Sen kazandın!
+                    if self.bot_modu:
+                        self.pvp_kazanan = "Oyuncu (Sen)"
+                    else:
+                        self.pvp_kazanan = self.pvp_oyuncu1_isim
+                    self._oyun_bitti_islemleri("pvp_oyuncu1_kazandi" if self.pvp_modu else "oyuncu_kazandi")
+            else:
+                # Normal mod - sadece kendine çarpma kontrolü
+                if self.yilan.carpma_kontrolu():
+                    self._oyun_bitti_islemleri("kendi")
+        
+        # Efektleri güncelle - her zaman 30 FPS hedefiyle (optimizasyon)
+        current_fps = HIZ_FPS[self.hiz_seviyesi]
+        self.yilan_izi_efekti.guncelle(current_fps)
+        self.yem_yeme_efekti.guncelle(current_fps)
+        self.puan_efekti.guncelle(current_fps)
+    
+    def _oyun_bitti_islemleri(self, olum_nedeni):
+        """Oyun bittiğinde yapılacak işlemler"""
+        self.oyun_durumu = "GAME_OVER"
+        
+        # Ses efekti ve müzik - duruma göre
+        if olum_nedeni == "bot_kazandi":
+            # Bot kazandı - Game Over müziği
+            self.ses_yoneticisi.efekt_cal("olum")
+            self.ses_yoneticisi.muzik_cal_bir_kez("21. Game Over (Alt) (Unused).mp3")
+        elif olum_nedeni == "oyuncu_kazandi":
+            # Oyuncu botu yendi - Level Complete müziği
+            self.ses_yoneticisi.muzik_cal_bir_kez("06. Level Complete.mp3")
+        elif olum_nedeni in ["kendi", "duvar", "bomba"]:
+            # Normal oyunda öldü - Lost a Life müziği
+            self.ses_yoneticisi.efekt_cal("olum")
+            self.ses_yoneticisi.muzik_cal_bir_kez("08. Lost a Life.mp3")
+        else:
+            # Diğer durumlar (pvp, berabere, vb.)
+            self.ses_yoneticisi.efekt_cal("olum")
+            self.ses_yoneticisi.muzik_durdur()
+        
+        # İstatistikleri kaydet
+        oyun_suresi = int(time.time() - self.oyun_baslangic_zamani)
+        mod_adi = "Bomb Modu" if self.bomba_modu else "Normal"
+        self.istatistik_takipci.oyun_bitti(
+            self.yilan.skor,
+            len(self.yilan.pozisyonlar),
+            mod_adi,
+            olum_nedeni,
+            oyun_suresi
+        )
+        
+        # Başarımları güncelle
+        self.basarim_yoneticisi.ilerleme_kaydet("puan_avcisi", self.yilan.skor)
+        self.basarim_yoneticisi.ilerleme_kaydet("puanlama_ustasi", self.yilan.skor)
+        self.basarim_yoneticisi.ilerleme_kaydet("efsane", self.yilan.skor)
+        
+        if self.bomba_modu:
+            self.basarim_yoneticisi.ilerleme_kaydet("bomba_ustasi", self.yilan.skor)
+        
+        if self.hiz_seviyesi == 3:  # Çok hızlı
+            self.basarim_yoneticisi.ilerleme_kaydet("hizli_oyuncu", self.yilan.skor)
+        
+        self.basarim_yoneticisi.arttir("tecrubeli", 1)
+        self.basarim_yoneticisi.arttir("bagimsiz", 1)
+        self.basarim_yoneticisi.arttir("maraton", 1)
+        
+        # Yeni kazanılan başarımları al
+        self.yeni_basarimlar = self.basarim_yoneticisi.yeni_acilan_basarimlari_al()
+        
+        # En yüksek skoru güncelle ve kaydet
+        if self.yilan.skor > self.en_yuksek_skor:
+            self.en_yuksek_skor = self.yilan.skor
+            self.ayarlari_kaydet()
+
+    def ciz(self):
+        """Ekrana çizer"""
+        if self.oyun_durumu == "MENU":
+            # Menü arka planı
+            if self.menu_arkaplan:
+                self.ekran.blit(self.menu_arkaplan, (0, 0))
+            else:
+                self.ekran.fill(LACIVERT)
+            self.menu.ana_menu_ciz(self.en_yuksek_skor)
+        
+        elif self.oyun_durumu == "MODLAR":
+            # Modlar menüsü arka planı
+            if self.menu_arkaplan:
+                self.ekran.blit(self.menu_arkaplan, (0, 0))
+            else:
+                self.ekran.fill(LACIVERT)
+            self.menu.modlar_menu_ciz(self.bomba_modu)
+        
+        elif self.oyun_durumu == "SETTINGS":
+            # Ayarlar arka planı
+            if self.menu_arkaplan:
+                self.ekran.blit(self.menu_arkaplan, (0, 0))
+            else:
+                self.ekran.fill(LACIVERT)
+            self.menu.ayarlar_menu_ciz(
+                self.hiz_seviyesi, 
+                self.menu_arkaplan_yolu, 
+                self.oyun_arkaplan_yolu,
+                self.ses_yoneticisi.ses_acik,
+                self.ses_yoneticisi.muzik_acik
+            )
+        
+        elif self.oyun_durumu == "HIZ_AYAR":
+            # Hız ayarları arka planı
+            if self.menu_arkaplan:
+                self.ekran.blit(self.menu_arkaplan, (0, 0))
+            else:
+                self.ekran.fill(LACIVERT)
+            self.menu.hiz_ayarlari_menu_ciz(self.hiz_seviyesi)
+        
+        elif self.oyun_durumu == "ARKAPLAN_AYAR":
+            # Arka plan ayarları arka planı
+            if self.menu_arkaplan:
+                self.ekran.blit(self.menu_arkaplan, (0, 0))
+            else:
+                self.ekran.fill(LACIVERT)
+            self.menu.arkaplan_ayarlari_menu_ciz(
+                self.menu_arkaplan_yolu, 
+                self.oyun_arkaplan_yolu,
+                self.menu_bg_secili_index,
+                self.oyun_bg_secili_index,
+                self.arkaplan_menu_secim
+            )
+        
+        elif self.oyun_durumu == "YILAN_AYAR":
+            # Yılan özelleştirme arka planı
+            if self.menu_arkaplan:
+                self.ekran.blit(self.menu_arkaplan, (0, 0))
+            else:
+                self.ekran.fill(LACIVERT)
+            self.menu.yilan_ozellestirme_menu_ciz(
+                self.yilan_renk,
+                self.yilan_yuz,
+                self.yilan_aksesuar,
+                self.yilan_ozellestirme_secim
+            )
+        
+        elif self.oyun_durumu == "TEMA_AYAR":
+            # Tema seçim arka planı - seçili temayı göster
+            tema_renkleri = TEMALAR[self.aktif_tema]
+            self.ekran.fill(tema_renkleri["arkaplan"])
+            # İzgara efekti
+            izgara_ciz(self.ekran, tema_renkleri["izgara"])
+            self.menu.tema_menu_ciz(self.aktif_tema)
+        
+        elif self.oyun_durumu == "MUZIK_SECICI":
+            # Müzik seçici arka planı
+            if self.menu_arkaplan:
+                self.ekran.blit(self.menu_arkaplan, (0, 0))
+            else:
+                self.ekran.fill(LACIVERT)
+            # Aktif indexi belirle
+            aktif_index = self.menu_muzik_index if self.muzik_secim_modu == "MENU" else self.oyun_muzik_index
+            self.menu.muzik_secici_menu_ciz(self.ses_yoneticisi, aktif_index, self.muzik_secici_scroll, self.muzik_secim_modu)
+        
+        elif self.oyun_durumu == "BASARIMLAR":
+            # Başarımlar ekranı arka planı
+            if self.menu_arkaplan:
+                self.ekran.blit(self.menu_arkaplan, (0, 0))
+            else:
+                self.ekran.fill(LACIVERT)
+            self.menu.basarimlar_ekrani_ciz(self.basarimlar)
+        
+        elif self.oyun_durumu == "ISTATISTIKLER":
+            # İstatistikler ekranı arka planı
+            if self.menu_arkaplan:
+                self.ekran.blit(self.menu_arkaplan, (0, 0))
+            else:
+                self.ekran.fill(LACIVERT)
+            self.menu.istatistikler_ekrani_ciz(self.istatistikler)
+        
+        elif self.oyun_durumu == "KREDILER":
+            # Krediler ekranı arka planı
+            if self.menu_arkaplan:
+                self.ekran.blit(self.menu_arkaplan, (0, 0))
+            else:
+                self.ekran.fill(LACIVERT)
+            self.menu.krediler_ekrani_ciz()
+        
+        elif self.oyun_durumu == "PVP_ISIM_GIRIS":
+            # PVP isim giriş ekranı
+            if self.menu_arkaplan:
+                self.ekran.blit(self.menu_arkaplan, (0, 0))
+            else:
+                self.ekran.fill(LACIVERT)
+            self.menu.pvp_isim_giris_ciz(
+                self.pvp_isim_input_aktif,
+                self.pvp_oyuncu1_isim_temp,
+                self.pvp_oyuncu2_isim_temp
+            )
+        
+        elif self.oyun_durumu == "PVP_MOD_SECIM":
+            # PVP mod seçim ekranı
+            if self.menu_arkaplan:
+                self.ekran.blit(self.menu_arkaplan, (0, 0))
+            else:
+                self.ekran.fill(LACIVERT)
+            self.menu.pvp_mod_secim_ciz(self.pvp_secili_mod)
+        
+        elif self.oyun_durumu == "BOT_ZORLUK_SECIM":
+            # Bot zorluk seçim ekranı
+            if self.menu_arkaplan:
+                self.ekran.blit(self.menu_arkaplan, (0, 0))
+            else:
+                self.ekran.fill(LACIVERT)
+            self.menu.bot_zorluk_secim_ciz(self.bot_zorluk)
+        
+        elif self.oyun_durumu == "PLAYING":
+            # Önce ekranı tamamen temizle (hayalet görünümü önlemek için)
+            tema_renkleri = TEMALAR[self.aktif_tema]
+            self.ekran.fill(tema_renkleri["arkaplan"])
+            
+            # Oyun arka planı (tema yerine varsa)
+            if self.oyun_arkaplan:
+                self.ekran.blit(self.oyun_arkaplan, (0, 0))
+            
+            # İzgara (tema renginde)
+            izgara_ciz(self.ekran, tema_renkleri["izgara"])
+            
+            # Parçacık efektini çiz (yılanın altında)
+            self.yilan_izi_efekti.ciz(self.ekran)
+            
+            # Bomba modu aktifse bombaları çiz
+            if self.bomba_modu:
+                self.bomba_yoneticisi.ciz(self.ekran)
+            
+            # Oyun elemanları
+            self.yilan.ciz(self.ekran)
+            # PVP veya Bot modunda 2. yılanı da çiz
+            if (self.pvp_modu or self.bot_modu) and self.yilan2:
+                self.yilan2.ciz(self.ekran)
+            
+            self.yem.ciz(self.ekran)
+            
+            # Özel yem varsa çiz
+            if self.ozel_yem_aktif and self.ozel_yem:
+                self.ozel_yem.ciz(self.ekran)
+            
+            # PVP özel yemleri çiz
+            if (self.pvp_modu or self.bot_modu):
+                if self.pvp_ozel_yem_p1:
+                    self.pvp_ozel_yem_p1.ciz(self.ekran)
+                if self.pvp_ozel_yem_p2:
+                    self.pvp_ozel_yem_p2.ciz(self.ekran)
+            
+            # Sahte yem varsa çiz
+            if self.sahte_yem:
+                self.sahte_yem.ciz(self.ekran)
+            
+            # Yem yeme ve puan efektlerini çiz (en üstte)
+            self.yem_yeme_efekti.ciz(self.ekran)
+            self.puan_efekti.ciz(self.ekran)
+            
+            # Patlama animasyonu çiz (en üstte)
+            if self.patlama_animasyon_sayaci > 0 and self.patlama_pozisyon:
+                self._patlama_animasyonu_ciz()
+            
+            # Skor gösterimi
+            if self.pvp_modu:
+                # PVP modunda her iki oyuncunun skorunu ve yeteneklerini göster
+                self.menu.pvp_skorlar_goster(
+                    self.yilan.skor, 
+                    self.yilan2.skor if self.yilan2 else 0,
+                    self.pvp_oyuncu1_isim,
+                    self.pvp_oyuncu2_isim,
+                    self.p1_kalkan_aktif,
+                    self.p2_kalkan_aktif,
+                    self.p1_hiz_suresi,
+                    self.p2_hiz_suresi
+                )
+            elif self.bot_modu:
+                # Bot modunda oyuncu vs bot skorları ve yetenekleri
+                self.menu.pvp_skorlar_goster(
+                    self.yilan.skor, 
+                    self.yilan2.skor if self.yilan2 else 0,
+                    "Sen",
+                    f"Bot ({self.bot_zorluk})",
+                    self.p1_kalkan_aktif,
+                    self.p2_kalkan_aktif,
+                    self.p1_hiz_suresi,
+                    self.p2_hiz_suresi
+                )
+            else:
+                self.menu.skor_goster(self.yilan.skor, self.en_yuksek_skor)
+            
+            # Pause ekranı (en üstte)
+            if self.oyun_duraklatildi:
+                self._pause_ekrani_ciz()
+        
+        elif self.oyun_durumu == "GAME_OVER":
+            # Oyun bitti arka planı
+            if self.menu_arkaplan:
+                self.ekran.blit(self.menu_arkaplan, (0, 0))
+            else:
+                self.ekran.fill(LACIVERT)
+            
+            if self.pvp_modu:
+                # PVP oyun bitti ekranı - kazananı göster
+                self.menu.pvp_oyun_bitti_ekrani(
+                    self.yilan.skor, 
+                    self.yilan2.skor if self.yilan2 else 0,
+                    self.pvp_kazanan if hasattr(self, 'pvp_kazanan') else "Bilinmiyor",
+                    self.pvp_oyuncu1_isim,
+                    self.pvp_oyuncu2_isim
+                )
+            elif self.bot_modu:
+                # Bot oyun bitti ekranı - kazananı göster
+                self.menu.pvp_oyun_bitti_ekrani(
+                    self.yilan.skor, 
+                    self.yilan2.skor if self.yilan2 else 0,
+                    self.pvp_kazanan if hasattr(self, 'pvp_kazanan') else "Bilinmiyor",
+                    "Sen",
+                    f"Bot ({self.bot_zorluk})"
+                )
+            else:
+                self.menu.oyun_bitti_ekrani(self.yilan.skor, self.en_yuksek_skor, self.yeni_basarimlar)
+
+    def calistir(self):
+        """Ana oyun döngüsü"""
+        while True:
+            self.olay_isle()
+            self.guncelle()
+            self.ciz()
+            
+            # Her zaman tam ekran modunda ölçeklendir
+            # Siyah arkaplan
+            self.gercek_ekran.fill((0, 0, 0))
+            # Oyun yüzeyini ölçeklendir
+            scaled_surface = pygame.transform.scale(
+                self.ekran,
+                (int(GENISLIK * self.scale), int(YUKSEKLIK * self.scale))
+            )
+            # Merkeze yerleştir (titreme efekti ile)
+            offset_x_titremeli = self.offset_x + self.ekran_titreme_x
+            offset_y_titremeli = self.offset_y + self.ekran_titreme_y
+            self.gercek_ekran.blit(scaled_surface, (offset_x_titremeli, offset_y_titremeli))
+            
+            pygame.display.update()
+            # Seçilen hız seviyesine göre FPS ayarla
+            self.saat.tick(HIZ_FPS[self.hiz_seviyesi])
+    
+    def _patlama_animasyonu_ciz(self):
+        """Gerçekçi patlama animasyonu çizer (görseldeki gibi)"""
+        if not self.patlama_pozisyon:
+            return
+        
+        x, y = self.patlama_pozisyon
+        # x ve y zaten piksel koordinatı, hücre merkezini hesapla
+        merkez_x = x + HUCRE_BOYUTU // 2
+        merkez_y = y + HUCRE_BOYUTU // 2
+        
+        # Animasyon ilerlemesi (0.0 - 1.0)
+        ilerleme = self.patlama_animasyon_sayaci / PATLAMA_SÜRESI
+        
+        # 1. İLK FLASH - Beyaz parlama (ilk 3 frame)
+        if ilerleme < 0.1:
+            flash_alpha = int(255 * (1 - ilerleme / 0.1))
+            flash_radius = int(HUCRE_BOYUTU * 4)
+            flash_surface = pygame.Surface((flash_radius * 2, flash_radius * 2), pygame.SRCALPHA)
+            pygame.draw.circle(flash_surface, (255, 255, 255, flash_alpha),
+                             (flash_radius, flash_radius), flash_radius)
+            self.ekran.blit(flash_surface,
+                           (merkez_x - flash_radius, merkez_y - flash_radius))
+        
+        # 2. ANA ATEŞ TOPU (sarı-turuncu merkez)
+        if ilerleme < 0.7:
+            # Büyüyen ateş topu
+            ates_radius = int(HUCRE_BOYUTU * 2.5 * min(1.0, ilerleme / 0.3))
+            ates_alpha = int(255 * (1 - ilerleme / 0.7))
+            
+            # Dış kahverengi duman halkası
+            duman_surface = pygame.Surface((ates_radius * 2 + 30, ates_radius * 2 + 30), pygame.SRCALPHA)
+            random.seed(self.patlama_animasyon_sayaci)
+            for i in range(12):  # 12 duman bulutu
+                aci = (i * 30 + random.randint(-10, 10)) * math.pi / 180
+                duman_uzaklik = ates_radius + random.randint(5, 15)
+                duman_x = int(ates_radius + 15 + duman_uzaklik * math.cos(aci))
+                duman_y = int(ates_radius + 15 + duman_uzaklik * math.sin(aci))
+                duman_boyut = random.randint(15, 25)
+                # Kahverengi-gri duman
+                duman_renk = random.choice([
+                    (139, 90, 43, ates_alpha // 2),   # Kahverengi
+                    (160, 110, 60, ates_alpha // 2),  # Açık kahve
+                    (100, 80, 60, ates_alpha // 2)    # Koyu kahve
+                ])
+                pygame.draw.circle(duman_surface, duman_renk,
+                                 (duman_x, duman_y), duman_boyut)
+            self.ekran.blit(duman_surface,
+                           (merkez_x - ates_radius - 15, merkez_y - ates_radius - 15))
+            
+            # Turuncu ateş katmanı
+            ates_surface = pygame.Surface((ates_radius * 2 + 10, ates_radius * 2 + 10), pygame.SRCALPHA)
+            pygame.draw.circle(ates_surface, (255, 100, 0, ates_alpha),
+                             (ates_radius + 5, ates_radius + 5), ates_radius)
+            self.ekran.blit(ates_surface,
+                           (merkez_x - ates_radius - 5, merkez_y - ates_radius - 5))
+            
+            # İç sarı-beyaz parlama
+            parlama_radius = int(ates_radius * 0.6)
+            parlama_surface = pygame.Surface((parlama_radius * 2 + 10, parlama_radius * 2 + 10), pygame.SRCALPHA)
+            pygame.draw.circle(parlama_surface, (255, 255, 150, ates_alpha),
+                             (parlama_radius + 5, parlama_radius + 5), parlama_radius)
+            self.ekran.blit(parlama_surface,
+                           (merkez_x - parlama_radius - 5, merkez_y - parlama_radius - 5))
+        
+        # 3. DUMAN BULUTLARI (genişleyen)
+        if ilerleme > 0.2:
+            duman_ilerleme = (ilerleme - 0.2) / 0.8
+            max_duman_radius = HUCRE_BOYUTU * 4
+            
+            random.seed(self.patlama_animasyon_sayaci + 100)
+            for i in range(20):  # 20 duman parçacığı
+                aci = random.uniform(0, 2 * math.pi)
+                mesafe = random.uniform(0.5, 1.5) * max_duman_radius * duman_ilerleme
+                dx = int(mesafe * math.cos(aci))
+                dy = int(mesafe * math.sin(aci))
+                
+                duman_x = merkez_x + dx
+                duman_y = merkez_y + dy
+                duman_boyut = random.randint(10, 20) + int(15 * duman_ilerleme)
+                duman_alpha = int(150 * (1 - duman_ilerleme))
+                
+                # Kahverengi-gri tonları
+                renk_secim = random.randint(0, 2)
+                if renk_secim == 0:
+                    renk = (120, 90, 60, duman_alpha)   # Koyu kahve
+                elif renk_secim == 1:
+                    renk = (150, 120, 80, duman_alpha)  # Orta kahve
+                else:
+                    renk = (180, 150, 120, duman_alpha) # Açık kahve
+                
+                duman_parcacik = pygame.Surface((duman_boyut * 2, duman_boyut * 2), pygame.SRCALPHA)
+                pygame.draw.circle(duman_parcacik, renk,
+                                 (duman_boyut, duman_boyut), duman_boyut)
+                self.ekran.blit(duman_parcacik,
+                               (duman_x - duman_boyut, duman_y - duman_boyut))
+        
+        # 4. ATEŞ PARÇACIKLARI (saçılan)
+        if ilerleme < 0.6:
+            random.seed(self.patlama_animasyon_sayaci + 200)
+            for i in range(30):  # 30 ateş parçacığı
+                aci = random.uniform(0, 2 * math.pi)
+                hiz = random.uniform(0.5, 2.0)
+                mesafe = hiz * HUCRE_BOYUTU * 2 * ilerleme
+                
+                parcacik_x = merkez_x + int(mesafe * math.cos(aci))
+                parcacik_y = merkez_y + int(mesafe * math.sin(aci))
+                parcacik_boyut = random.randint(3, 8)
+                parcacik_alpha = int(255 * (1 - ilerleme / 0.6))
+                
+                # Turuncu-sarı ateş parçacıkları
+                if random.random() < 0.5:
+                    renk = (255, 150, 0, parcacik_alpha)  # Turuncu
+                else:
+                    renk = (255, 255, 100, parcacik_alpha)  # Sarı
+                
+                parcacik_surface = pygame.Surface((parcacik_boyut * 2, parcacik_boyut * 2), pygame.SRCALPHA)
+                pygame.draw.circle(parcacik_surface, renk,
+                                 (parcacik_boyut, parcacik_boyut), parcacik_boyut)
+                self.ekran.blit(parcacik_surface,
+                               (parcacik_x - parcacik_boyut, parcacik_y - parcacik_boyut))
+        
+        # 5. ŞOK DALGASI (genişleyen halka)
+        if ilerleme < 0.4:
+            dalga_ilerleme = ilerleme / 0.4
+            dalga_radius = int(HUCRE_BOYUTU * 4 * dalga_ilerleme)
+            dalga_alpha = int(200 * (1 - dalga_ilerleme))
+            
+            dalga_surface = pygame.Surface((dalga_radius * 2 + 20, dalga_radius * 2 + 20), pygame.SRCALPHA)
+            # Çift halka
+            pygame.draw.circle(dalga_surface, (255, 200, 100, dalga_alpha),
+                             (dalga_radius + 10, dalga_radius + 10), dalga_radius, 4)
+            pygame.draw.circle(dalga_surface, (255, 150, 50, dalga_alpha // 2),
+                             (dalga_radius + 10, dalga_radius + 10), dalga_radius + 5, 2)
+            self.ekran.blit(dalga_surface,
+                           (merkez_x - dalga_radius - 10, merkez_y - dalga_radius - 10))
+    
+    def _pause_ekrani_ciz(self):
+        """Pause ekranını çizer"""
+        # Yarı transparan overlay
+        overlay = pygame.Surface((GENISLIK, YUKSEKLIK), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))  # Siyah, %70 opak
+        self.ekran.blit(overlay, (0, 0))
+        
+        # Pause kutusu
+        kutu_genislik = 400
+        kutu_yukseklik = 250
+        kutu_x = (GENISLIK - kutu_genislik) // 2
+        kutu_y = (YUKSEKLIK - kutu_yukseklik) // 2
+        
+        # Kutu gölgesi
+        golge_rect = pygame.Rect(kutu_x + 5, kutu_y + 5, kutu_genislik, kutu_yukseklik)
+        pygame.draw.rect(self.ekran, (0, 0, 0), golge_rect, border_radius=15)
+        
+        # Ana kutu
+        kutu_rect = pygame.Rect(kutu_x, kutu_y, kutu_genislik, kutu_yukseklik)
+        pygame.draw.rect(self.ekran, (40, 40, 60), kutu_rect, border_radius=15)
+        pygame.draw.rect(self.ekran, (100, 100, 150), kutu_rect, 3, border_radius=15)
+        
+        # Başlık
+        font_buyuk = pygame.font.Font(None, 72)
+        baslik = font_buyuk.render("DURAKLADI", True, (255, 255, 100))
+        baslik_rect = baslik.get_rect(center=(GENISLIK // 2, kutu_y + 60))
+        self.ekran.blit(baslik, baslik_rect)
+        
+        # Pause ikonu (iki dikey çizgi)
+        ikon_x = GENISLIK // 2 - 20
+        ikon_y = kutu_y + 110
+        pygame.draw.rect(self.ekran, (255, 255, 100), (ikon_x, ikon_y, 15, 50), border_radius=3)
+        pygame.draw.rect(self.ekran, (255, 255, 100), (ikon_x + 25, ikon_y, 15, 50), border_radius=3)
+        
+        # Devam et mesajı
+        font_orta = pygame.font.Font(None, 36)
+        mesaj1 = font_orta.render("Devam etmek için", True, BEYAZ)
+        mesaj1_rect = mesaj1.get_rect(center=(GENISLIK // 2, kutu_y + 185))
+        self.ekran.blit(mesaj1, mesaj1_rect)
+        
+        mesaj2 = font_orta.render("P tuşuna basın", True, (100, 255, 100))
+        mesaj2_rect = mesaj2.get_rect(center=(GENISLIK // 2, kutu_y + 215))
+        self.ekran.blit(mesaj2, mesaj2_rect)
+
