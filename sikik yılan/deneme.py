@@ -1,0 +1,1 @@
+# print("deneme mq ne bakıyon")
